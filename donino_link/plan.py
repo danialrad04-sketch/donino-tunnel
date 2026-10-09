@@ -1,4 +1,6 @@
 """Offline two-node plan generation. Plans contain secrets and must stay private."""
+import base64
+import hashlib
 import ipaddress
 import json
 import re
@@ -11,8 +13,8 @@ from .panel import password_record
 
 ETC = "/etc/donino-link/current"
 OPT = "/opt/donino-link/current"
-TRANSPORTS = ("frp-wss", "frp-quic", "backpack-wss", "paqet", "backhaul-wss")
-EXPERIMENTAL = {"backpack-wss", "paqet", "backhaul-wss"}
+TRANSPORTS = ("frp-wss", "frp-quic", "backpack-wss", "paqet", "backhaul-wss", "browser-wss")
+EXPERIMENTAL = {"backpack-wss", "paqet", "backhaul-wss", "browser-wss"}
 
 
 def q(v):
@@ -67,7 +69,7 @@ WantedBy=multi-user.target
 """
 
 
-def make_certs(directory, iran, renew=False):
+def make_certs(directory, iran, renew=False, foreign=None):
     directory.mkdir(parents=True,exist_ok=True)
     def run(*args):
         subprocess.run(["openssl",*args],cwd=directory,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -82,9 +84,15 @@ def make_certs(directory, iran, renew=False):
         san = "IP:"+iran
     except ValueError:
         san = "DNS:"+iran
-    for who,purpose in [("server","serverAuth"),("client","clientAuth")]:
+    for who,purpose in [("server","serverAuth"),("client","clientAuth")]+([("browser","serverAuth")] if foreign else []):
         run("req","-newkey","rsa:3072","-nodes","-keyout",who+".key","-out",who+".csr","-subj","/CN=donino-"+who)
         extra = "\nsubjectAltName="+san if who == "server" else ""
+        if who == "browser":
+            try:
+                ipaddress.ip_address(foreign)
+                extra="\nsubjectAltName=IP:"+foreign
+            except ValueError:
+                extra="\nsubjectAltName=DNS:"+foreign
         write(directory/(who+".ext"),"basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage="+purpose+extra+"\n")
         run("x509","-req","-in",who+".csr","-CA","ca.crt","-CAkey","ca.key","-CAcreateserial","-out",who+".crt","-days","90","-extfile",who+".ext")
     for path in directory.iterdir():
@@ -94,10 +102,25 @@ def make_certs(directory, iran, renew=False):
 def renew_plan(output):
     output=Path(output)
     summary=json.loads((output/'plan.json').read_text())
-    make_certs(output/'ca',summary['iran'],renew=True)
+    make_certs(output/'ca',summary['iran'],renew=True,foreign=summary['foreign'] if 'browser-wss' in summary['transports'] else None)
     for role,who in [('iran','server'),('foreign','client')]:
         for suffix in ['crt','key']:
             shutil.copy2(output/'ca'/f'{who}.{suffix}',output/role/'certs'/f'{who}.{suffix}')
+
+
+    if 'browser-wss' in summary['transports']:
+        for suffix in ['crt','key']:
+            shutil.copy2(output/'ca'/f'browser.{suffix}',output/'foreign'/'certs'/f'browser.{suffix}')
+        path=output/'iran'/'transports'/'browser-wss.json'
+        config=json.loads(path.read_text())
+        config['spki']=spki_pin(output/'ca'/'browser.crt')
+        atomic_json(path,config)
+
+
+def spki_pin(cert):
+    pub=subprocess.check_output(['openssl','x509','-in',str(cert),'-pubkey','-noout'])
+    der=subprocess.check_output(['openssl','pkey','-pubin','-outform','DER'],input=pub)
+    return base64.b64encode(hashlib.sha256(der).digest()).decode()
 
 
 def frp_config(role, transport, iran, port, token, mappings):
@@ -166,7 +189,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     if not transports or len(set(transports)) != len(transports) or not set(transports) <= set(TRANSPORTS):
         raise ValueError("select unique supported transports")
     if set(transports) & EXPERIMENTAL and not experimental:
-        raise ValueError("BackPack, Paqet and legacy Backhaul need --experimental; read docs/research.md first")
+        raise ValueError("BrowserLink, BackPack, Paqet and legacy Backhaul need --experimental; read docs/research.md first")
     endpoint(iran+":443" if ':' not in iran else '['+iran+']:443')
     endpoint(foreign+":443" if ':' not in foreign else '['+foreign+']:443')
     if "paqet" in transports:
@@ -198,7 +221,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     output.mkdir(mode=0o700,parents=True)
     health_key = secrets.token_hex(32)
     (output/"ca").mkdir(mode=0o700)
-    make_certs(output/"ca",iran)
+    make_certs(output/"ca",iran,foreign=foreign if "browser-wss" in transports else None)
     paths,engines,units = [],set(),{"iran":[],"foreign":[]}
     for role in ['iran','foreign']:
         root = output/role
@@ -213,7 +236,8 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         engine=t.split('-')[0]
         if engine=='frp':
             engine='frp'
-        engines.add(engine)
+        if engine != 'browser':
+            engines.add(engine)
         local_base=base+i*100
         mappings=[(s['id'],local_base+j,s['target']) for j,s in enumerate(services)]+[('health',local_base+50,f'127.0.0.1:{health_port}')]
         paths.append({'id':t,'transport':t,'priority':10+i*10,'health':f'127.0.0.1:{local_base+50}',
@@ -222,9 +246,21 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         port=paqet_port if t=='paqet' else carrier_base+i
         for role in ['iran','foreign']:
             root=output/role
-            ext='yaml' if t=='paqet' else 'toml'
+            ext='json' if t=='browser-wss' else ('yaml' if t=='paqet' else 'toml')
             file=f'transports/{t}.{ext}'
-            if t.startswith('frp'):
+            if t=='browser-wss':
+                host=f'[{foreign}]' if ':' in foreign else foreign
+                origin=f'https://{host}:{port}'
+                common={'role':role,'origin':origin,'token':token}
+                if role=='iran':
+                    common.update(chromium='/usr/bin/chromium',spki=spki_pin(output/'ca'/'browser.crt'),ca=f'{ETC}/certs/ca.crt',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
+                else:
+                    for suffix in ['crt','key']:
+                        shutil.copy2(output/'ca'/f'browser.{suffix}',root/'certs'/f'browser.{suffix}')
+                    common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings})
+                text=json.dumps(common,indent=2)+'\n'
+                command=f'{OPT}/venv/bin/python -m donino_link.browser --config {ETC}/{file}'
+            elif t.startswith('frp'):
                 text=frp_config(role,t,iran,port,token,mappings)
                 binary='frps' if role=='iran' else 'frpc'
                 command=f'{OPT}/bin/{binary} -c {ETC}/{file}'
@@ -236,6 +272,12 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 command=f'{OPT}/bin/{engine} -c {ETC}/{file}'
             write(root/file,text)
             text=unit(t,command,raw=t=='paqet')
+            if t=='browser-wss' and role=='iran':
+                # Chromium's namespace sandbox needs unprivileged user namespaces.
+                # No root/no-sandbox runtime and no network capabilities.
+                text=text.replace('AmbientCapabilities=CAP_NET_BIND_SERVICE','AmbientCapabilities=')
+                text=text.replace('CapabilityBoundingSet=CAP_NET_BIND_SERVICE','CapabilityBoundingSet=')
+                text=text.replace('MemoryMax=768M','MemoryMax=1536M')
             if t=='paqet' and role=='foreign':
                 text=text.replace('After=network-online.target','After=network-online.target donino-link-raw.service\nRequires=donino-link-raw.service')
                 raw=f'''[Unit]
@@ -270,10 +312,10 @@ WantedBy=multi-user.target
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
-                    'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
+                    'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,
-             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_base+i for i,t in enumerate(transports) if t!='paqet']+[endpoint(s['listen'])[1] for s in services],
+             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_base+i for i,t in enumerate(transports) if t not in ('paqet','browser-wss')]+[endpoint(s['listen'])[1] for s in services],
                                   'udp':[carrier_base+i for i,t in enumerate(transports) if t=='frp-quic']},
-                                  'foreign':{'tcp':[paqet_port] if 'paqet' in transports else [],'udp':[]}}}
+                                  'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_base+i for i,t in enumerate(transports) if t=='browser-wss'],'udp':[]}}}
     atomic_json(output/'plan.json',summary)
     return summary

@@ -27,3 +27,22 @@ jobs:
           python-version: '3.12'
       - run: pip install .
       - run: python scripts/test-engines.py
+  browser-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install .
+      - run: node --check donino_link/resources/browser_bridge.js
+      - run: google-chrome --version
+      - run: python scripts/test-browser.py --chromium /usr/bin/google-chrome --output browser-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-integration-results
+          path: browser-results.json

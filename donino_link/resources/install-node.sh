@@ -23,6 +23,11 @@ else
   echo 'Automatic installation supports Debian 12/13 and Ubuntu 24.04 with Python 3.11+.' >&2
   exit 1
 fi
+if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("browser") else 1)' "$source_dir/node/install.json"; then
+  . /etc/os-release
+  [[ "$ID" == debian ]] || { echo 'BrowserLink automatic Chromium installation currently requires Debian 12/13; Ubuntu snap Chromium is not supported by this unit.' >&2; exit 1; }
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q chromium nodejs
+fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
 id donino-link >/dev/null 2>&1 || useradd --system --user-group --home /var/lib/donino-link --shell /usr/sbin/nologin donino-link
 install -d -m 0750 -o root -g donino-link /etc/donino-link /opt/donino-link/releases
@@ -35,7 +40,9 @@ engines=$(/usr/bin/python3 -c 'import json,sys; print(" ".join(json.load(open(sy
 fetch_args=()
 for engine in $engines; do fetch_args+=(--engine "$engine"); done
 install -d -m 0700 /var/cache/donino-link
-"$release_dir/venv/bin/donino-link" fetch-engines "${fetch_args[@]}" --destination "$release_dir/bin" --cache /var/cache/donino-link
+if ((${#fetch_args[@]})); then
+  "$release_dir/venv/bin/donino-link" fetch-engines "${fetch_args[@]}" --destination "$release_dir/bin" --cache /var/cache/donino-link
+fi
 "$release_dir/venv/bin/donino-link" prepare-paqet --node "$release_dir/node"
 printf '%s\n' "$previous_dir" > "$release_dir/previous-release"
 chown -R root:donino-link "$release_dir"
