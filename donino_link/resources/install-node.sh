@@ -25,7 +25,7 @@ if [[ "$mode" != --activate ]]; then
 [[ "$ID" == debian && ( "$VERSION_ID" == 12 || "$VERSION_ID" == 13 ) || "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || { echo 'Supported: Debian 12/13 or Ubuntu 24.04.' >&2; exit 1; }
 if command -v apt-get >/dev/null; then
   apt-get update -q
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends python3 python3-venv python3-pip openssl iproute2 iputils-ping iptables ca-certificates openssh-client
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends python3 python3-venv python3-pip openssl iproute2 iputils-ping iptables ca-certificates openssh-client util-linux
 else
   echo 'Automatic installation supports Debian 12/13 and Ubuntu 24.04 with Python 3.11+.' >&2
   exit 1

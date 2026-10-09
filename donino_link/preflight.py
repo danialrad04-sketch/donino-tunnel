@@ -44,6 +44,8 @@ def check(node):
         if total < 1500*1024*1024: raise ValueError('BrowserLink requires at least 1.5 GiB host RAM')
         flag = Path('/proc/sys/kernel/unprivileged_userns_clone')
         if flag.exists() and flag.read_text().strip() != '1': raise ValueError('Chromium sandbox requires enabled unprivileged user namespaces')
+        namespaces = subprocess.run(['runuser','-u','donino-link','--','unshare','--user','--map-root-user','--net','true'],capture_output=True,timeout=10)
+        if namespaces.returncode: raise ValueError('Chromium namespace sandbox is blocked by the host kernel/AppArmor policy; fix that policy before selecting BrowserLink')
     if install['role'] == 'foreign':
         config = json.loads((node/'node.json').read_text())
         for name, target in config.get('targets', {}).items():

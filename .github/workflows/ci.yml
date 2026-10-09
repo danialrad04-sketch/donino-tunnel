@@ -18,6 +18,8 @@ jobs:
       - run: bash -n scripts/install-node.sh scripts/rollback.sh scripts/expose-panel.sh
       - run: bash -n donino_link/resources/install-node.sh donino_link/resources/rollback.sh scripts/setup.sh
       - run: cmp pyproject.toml donino_link/resources/pyproject.toml
+      - run: cmp scripts/install-node.sh donino_link/resources/install-node.sh
+      - run: cmp scripts/rollback.sh donino_link/resources/rollback.sh
   transport-integration:
     runs-on: ubuntu-24.04
     steps:
@@ -75,6 +77,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install .
+      # The runner host is Ubuntu; containers represent Debian nodes. Permit
+      # unprivileged user namespaces on this disposable CI host so Ubuntu's
+      # host-wide AppArmor restriction does not override Debian's sandbox policy.
+      # Chromium namespace and seccomp sandboxes stay enabled.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: python scripts/test-provision.py
       - uses: actions/upload-artifact@v4
         if: always()

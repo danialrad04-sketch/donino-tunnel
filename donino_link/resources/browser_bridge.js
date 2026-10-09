@@ -23,8 +23,10 @@ async function initialize(config) {
   initialized=true;
   profile=fs.mkdtempSync(path.join(os.tmpdir(),'donino-browser-'));
   const flags=['--headless=new','--remote-debugging-pipe',`--user-data-dir=${profile}`,
-    '--no-first-run','--no-default-browser-check','--disable-background-networking',
+    '--disable-setuid-sandbox','--no-first-run','--no-default-browser-check','--disable-background-networking',
     '--disable-component-update','--disable-sync','--disable-extensions','--disable-dev-shm-usage'];
+  // NoNewPrivileges in the service prevents the legacy setuid helper. Use
+  // Chromium's unprivileged namespace + seccomp sandbox, never --no-sandbox.
   if (config.spki) flags.push(`--ignore-certificate-errors-spki-list=${config.spki}`);
   // Explicit root-only local integration fixture. Production does not set it.
   if (config.test_no_sandbox===true) {

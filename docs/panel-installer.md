@@ -50,7 +50,7 @@ sudo systemctl restart donino-control.service
 | BackPack WSS | server و گواهی TLS | client و token | مسیر آزمایشی؛ نسخهٔ ثابت manifest |
 | Backhaul WSS | server و گواهی TLS | client و token | آزمایشی؛ محدودیت احراز هویت server |
 | Paqet | KCP client و تشخیص NIC/MAC | KCP server و قواعد raw محدود | IPv4، CAP_NET_RAW/ADMIN، پورت اختصاصی |
-| BrowserLink | Chromium و Node.js با sandbox | سایت HTTPS و WebSocket همان origin | ایران Debian 12/13، RAM حداقل ۱٫۵ GiB؛ آزمایشی |
+| BrowserLink | Chromium و Node.js با sandbox | سایت HTTPS و WebSocket همان origin | ایران Debian 12/13، RAM حداقل ۱٫۵ GiB، اجازهٔ user/network namespace؛ آزمایشی |
 
 نسخه‌های موتور و SHA256 از manifest خود پروژه گرفته می‌شوند؛ اسکریپت‌های نصب نامحدود پروژه‌های دیگر دانلود و اجرا نمی‌شوند. apt پیش‌نیازهای سیستم، venv بستهٔ Python و دانلودکننده باینری تأییدشده را نصب می‌کنند. دسترسی هر دو node به مخازن apt/PyPI/GitHub لازم است؛ شکست دانلود به‌عنوان خطای مرحله ثبت می‌شود. حالت نصب کاملاً آفلاین در این جریان هنوز پیاده نشده است.
 
@@ -80,3 +80,5 @@ sudo cat /var/lib/donino-control/jobs/JOB_ID/private.log
 نصب با HTTP طبق انتخاب صریح مدیر ممکن است؛ HTTP داده‌های مدیریتی و نشست را در شبکه رمزنگاری نمی‌کند. احراز هویت، CSRF و Origin check برای عملیات نصب هم فعال‌اند.
 
 منابع اصول پیاده‌سازی: [UFW app profiles](https://manpages.ubuntu.com/manpages/bionic/man8/ufw.8.html)، [OpenSSH host key verification](https://man.openbsd.org/ssh-keyscan.1)، [FRP TLS/QUIC](https://gofrp.org/en/docs/features/common/network/network/)، [مستندات اصلی BackPack](https://github.com/AminMGMT/BackPack). پیکربندی اجرایی به نسخه‌های ثابت manifest و آزمون همان باینری‌ها محدود است؛ مستندات main می‌توانند با نسخهٔ ثابت فرق داشته باشند.
+
+BrowserLink از namespace و seccomp sandbox استفاده می‌کند؛ چون سرویس `NoNewPrivileges` دارد، helper قدیمی setuid استفاده نمی‌شود. preflight اجازهٔ واقعی ایجاد namespace با کاربر محدود را بررسی می‌کند؛ سیاست kernel/AppArmor سرور تولیدی خودکار تضعیف نمی‌شود. آزمون container روی runner موقت Ubuntu، تنظیم user namespace همان میزبان آزمایشی را برای شبیه‌سازی Debian مجاز می‌کند.
