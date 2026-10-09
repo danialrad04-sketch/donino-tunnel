@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from aiohttp import web
+from aiohttp import web,ClientError
 from .config import atomic_json, endpoint, load_config
 from .deploy import build_payload
 from .plan import make_plan, TRANSPORTS, EXPERIMENTAL
@@ -117,14 +117,19 @@ class Coordinator:
         release = '/opt/donino-link/releases/control-' + job['id']
         job['release'] = release
         w.save_job(job)
+        leased=False
         try:
             w.event(job, 'preflight', 'running', 'Checking both servers before making changes')
             self.ssh(profile, "test \"$(id -u)\" -eq 0 && test -d /run/systemd/system && command -v python3 && command -v apt-get", timeout=30)
             r.run(['test', '-d', '/run/systemd/system'], timeout=5)
             w.event(job, 'preflight', 'done', 'SSH pin and root access verified')
+            if profile.get('agent_token'):
+                from .peer import peer_request
+                asyncio.run(peer_request(profile,'/lease',{'job_id':job['id']}));leased=True
             # Use the same frozen node bundles that the operator reviewed.
             for role in ['foreign', 'iran']:
                 w.event(job, 'prepare-'+role, 'running', 'Preparing prerequisites and verified engine binaries')
+                if leased:asyncio.run(peer_request(profile,'/lease',{'job_id':job['id']}))
                 payload = stage/role
                 build_payload(directory/role, payload)
                 if role == 'foreign':
@@ -140,6 +145,7 @@ class Coordinator:
                 job['prepared'].append(role); w.save_job(job)
                 w.event(job, 'prepare-'+role, 'done', 'Prepared; active installation has not switched')
             for role in ['foreign', 'iran']:
+                if leased:asyncio.run(peer_request(profile,'/lease',{'job_id':job['id']}))
                 # Save intent first: restart recovery can roll back a half-completed activation.
                 job['activating'] = role; w.save_job(job)
                 w.event(job, 'activate-'+role, 'running', 'Activating staged units and configuration')
@@ -183,6 +189,9 @@ class Coordinator:
         finally:
             try: self.ssh(profile, f'rm -rf -- {remote}', timeout=20)
             except Exception: pass
+            if leased:
+                try:asyncio.run(peer_request(profile,'/release',{'job_id':job['id']}))
+                except Exception:pass
             shutil.rmtree(stage, ignore_errors=True)
             w.save_job(job)
 
@@ -237,18 +246,66 @@ class Worker:
                 '-o', 'UserKnownHostsFile='+str(self.root/'hosts'/profile['id']),
                 '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'ConnectTimeout=10',
                 '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=2',
-                'root@'+profile['host']]
+                *(['-o','AddressFamily='+profile['family']] if profile.get('family') else []),'root@'+profile['host']]
 
     def state(self):
         with self.lock:
             jobs = [read_json(p) for p in (self.root/'jobs').glob('*/job.json')]
         return {'available': True, 'public_key': self.identity.with_suffix('.pub').read_text().strip(),
-                'profiles': read_json(self.root/'profiles.json', []),
+                'profiles': [{k:p[k] for k in ['id','name','host','port','fingerprint','agent_port','panel_listen','pair_id'] if k in p}
+                             for p in read_json(self.root/'profiles.json', [])],
                 'transports': [{'id': t, 'experimental': t in EXPERIMENTAL} for t in TRANSPORTS],
-                'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy}
+                'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy,
+                'iran_address':read_json(self.live,{}).get('public_address')}
+
+    def pair(self, body):
+        from .peer import split_code,peer_request
+        strict_fields(body,['name','host','agent_port','code'],['name','host','agent_port','code'])
+        if self.busy:raise ValueError('installation already running')
+        host=public_address(body['host']);port=integer(body['agent_port'],1024,65535,'pairing port')
+        addresses=socket.getaddrinfo(host,port,type=socket.SOCK_STREAM)
+        if not addresses or (not self.allow_private and any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses)):
+            raise ValueError('foreign pairing address must resolve to public IPs')
+        if not isinstance(body['name'],str) or not 1<=len(body['name'])<=64:raise ValueError('invalid connection name')
+        pin,token=split_code(body['code'])
+        peer={'host':host,'agent_port':port,'agent_fingerprint':pin}
+        result=asyncio.run(peer_request(peer,'/exchange',{'token':token,'public_key':self.identity.with_suffix('.pub').read_text().strip(),'name':body['name']}))
+        try:
+            strict_fields(result,['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'],['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'])
+            integer(result['ssh_port'],1,65535,'SSH port');endpoint(result['panel_listen'])
+            if not isinstance(result['pair_id'],str) or not SAFE_ID.fullmatch(result['pair_id']) or not isinstance(result['agent_token'],str) or not re.fullmatch('[A-Za-z0-9_-]{43}',result['agent_token']):raise ValueError('invalid pairing response')
+            profile=self.add_profile({'name':body['name'],'host':host,'port':result['ssh_port'],'fingerprint':result['ssh_fingerprint'],'family':result['ssh_family']})
+            with self.lock:
+                profiles=read_json(self.root/'profiles.json',[])
+                for p in profiles:
+                    if p['id']==profile['id']:
+                        p.update(agent_port=port,agent_fingerprint=pin,agent_token=result['agent_token'],pair_id=result['pair_id'],panel_listen=result['panel_listen'])
+                atomic_json(self.root/'profiles.json',profiles)
+            return {k:profile[k] for k in ['id','name','host','port','fingerprint']}
+        except Exception:
+            try:asyncio.run(peer_request(peer,'/revoke-self',{},token=result['agent_token']))
+            except Exception:pass
+            raise
+
+    async def observe(self):
+        """Only signed, actual carrier probes are sent to the foreign panel."""
+        from .peer import peer_request,digest
+        from aiohttp import ClientError
+        from .cli import doctor
+        cfg=load_config(self.live)
+        if not cfg.get('paths'):return
+        profiles=[p for p in read_json(self.root/'profiles.json',[]) if p.get('agent_token')]
+        if not profiles:return
+        rows=await doctor(cfg)
+        for profile in reversed(profiles):
+            try:
+                await peer_request(profile,'/telemetry',{'config_hash':digest(cfg['health_key']),'probes':rows})
+                break  # The matching installation is identified by its health key.
+            except (OSError,ValueError,ClientError,asyncio.TimeoutError):continue
 
     def add_profile(self, body):
-        strict_fields(body, ['name', 'host', 'port', 'fingerprint'], ['name', 'host', 'port', 'fingerprint'])
+        strict_fields(body, ['name', 'host', 'port', 'fingerprint','family'], ['name', 'host', 'port', 'fingerprint'])
+        if body.get('family') is not None and body['family'] not in ('inet','inet6'):raise ValueError('invalid SSH address family')
         if not isinstance(body['name'], str) or not 1 <= len(body['name']) <= 64: raise ValueError('invalid connection name')
         host = public_address(body['host']); port = integer(body['port'], 1, 65535, 'SSH port')
         # SSH targets must resolve exclusively to public IPs, not localhost,
@@ -259,6 +316,7 @@ class Worker:
         scan = subprocess.run(['ssh-keyscan', '-T', '5', '-p', str(port), '-t', 'ed25519,ecdsa,rsa', host], capture_output=True, text=True, timeout=25)
         line = pinned_line(scan.stdout, host, port, body['fingerprint'])
         profile = {'id': secrets.token_hex(16), 'name': body['name'], 'host': host, 'port': port, 'fingerprint': body['fingerprint']}
+        if body.get('family'):profile['family']=body['family']
         path = self.root/'hosts'/profile['id']; path.write_text(line); path.chmod(0o600)
         # Only save a usable connection; the public key must already be authorized.
         runner = self.runner_factory(self.root/'connection.log')
@@ -320,6 +378,7 @@ class Worker:
                                     spec['carrier_base'], spec['health_port'], spec['paqet_port'], spec.get('browser_port'),
                                     panel_port=endpoint(live['panel']['listen'])[1])
                 node = read_json(directory/'iran/node.json'); node['panel'] = live['panel']; node['state_db'] = live['state_db']
+                node['public_address']=spec['iran']
                 atomic_json(directory/'iran/node.json', node)
                 shutil.copyfile(live['panel']['credentials_file'], directory/'iran/admin.json')
                 shutil.copyfile(live['panel']['api_token_file'], directory/'iran/api-token')
@@ -334,6 +393,12 @@ class Worker:
                 for role in ['iran','foreign']:
                     install = read_json(directory/role/'install.json'); install['open_ufw'] = spec.get('open_ufw', False); atomic_json(directory/role/'install.json', install)
                 summary['host_firewall'] = 'active-ufw-only' if spec.get('open_ufw') else 'manual'
+                if self.profile(spec['profile_id']).get('panel_listen'):
+                    profile=self.profile(spec['profile_id']);foreign_ports=[endpoint(profile['panel_listen'])[1],profile['agent_port']]
+                    staged=read_json(directory/'foreign/install.json')
+                    occupied={item['port'] for item in staged['listeners']}|{endpoint(s['target'])[1] for s in spec['services']}
+                    if set(foreign_ports)&occupied:raise ValueError('foreign panel or pairing port conflicts with a tunnel listener or origin')
+                    summary['firewall']['foreign']['tcp']=sorted(set(summary['firewall']['foreign']['tcp']+foreign_ports))
                 summary['firewall']['iran']['tcp'] = sorted(set(summary['firewall']['iran']['tcp']+[endpoint(live['panel']['listen'])[1]]))
                 atomic_json(directory/'plan.json',summary)
                 atomic_json(directory/'control.json', meta)
@@ -386,6 +451,14 @@ class Worker:
             job['error'] = 'Controller operation failed: '+type(error).__name__
             self.event(job, 'failure', 'failed', job['error'])
         finally:
+            if recovery:
+                try:
+                    from .peer import peer_request
+                    meta=read_json(self.root/'plans'/job['plan_id']/'control.json')
+                    profile=self.profile(meta['profile_id'])
+                    if profile.get('agent_token'):await peer_request(profile,'/release',{'job_id':job['id']})
+                except Exception:
+                    self.event(job,'lease-release','failed','Foreign lease could not be released; it expires automatically.')
             self.busy = False
 
     async def recover(self):
@@ -401,16 +474,17 @@ def application(worker):
     async def errors(request, handler):
         try: return await handler(request)
         except ValueError as error: return web.json_response({'error': str(error)}, status=400)
-        except (CommandFailure, subprocess.TimeoutExpired):
+        except (CommandFailure, subprocess.TimeoutExpired,ClientError):
             return web.json_response({'error': 'SSH or prerequisite check failed. Verify authorization, fingerprint and connectivity; private worker log contains details.'}, status=502)
         except OSError:
             return web.json_response({'error': 'Controller resource or network unavailable'}, status=503)
     app = web.Application(client_max_size=16384, middlewares=[errors])
     async def state(request): return web.json_response(worker.state())
     async def profiles(request): return web.json_response(await asyncio.to_thread(worker.add_profile, await request.json()), status=201)
+    async def pair(request): return web.json_response(await asyncio.to_thread(worker.pair,await request.json()),status=201)
     async def preview(request): return web.json_response(await asyncio.to_thread(worker.preview, await request.json()), status=201)
     async def start(request): return web.json_response(await worker.start(await request.json()), status=202)
-    app.add_routes([web.get('/state', state), web.post('/profiles', profiles), web.post('/preview', preview), web.post('/start', start)])
+    app.add_routes([web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start)])
     async def cleanup(app):
         if worker.task: await worker.task
     app.on_cleanup.append(cleanup)
@@ -437,8 +511,18 @@ async def serve_control():
     stop = asyncio.Event()
     import signal
     for sig in [signal.SIGTERM, signal.SIGINT]: asyncio.get_running_loop().add_signal_handler(sig, stop.set)
+    async def observations():
+        from aiohttp import ClientError
+        while True:
+            try:await worker.observe()
+            except (OSError,ValueError,KeyError,ClientError,asyncio.TimeoutError):pass
+            await asyncio.sleep(10)
+    observer=asyncio.create_task(observations())
     try: await stop.wait()
-    finally: await runner.cleanup(); SOCKET.unlink(missing_ok=True); lock.close()
+    finally:
+        observer.cancel()
+        await asyncio.gather(observer,return_exceptions=True)
+        await runner.cleanup(); SOCKET.unlink(missing_ok=True); lock.close()
 
 
 def enable_control(allow_private=False):

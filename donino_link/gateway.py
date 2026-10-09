@@ -205,7 +205,7 @@ class Gateway:
             self.connections.discard(task)
 
     def snapshot(self):
-        return {"version":"0.1.0", "time":time.time(), "uptime":time.time()-self.started,
+        return {"version":"0.1.0", "role":"iran","bootstrap":self.config.get('bootstrap',False),"public_address":self.config.get('public_address'), "time":time.time(), "uptime":time.time()-self.started,
                 "paused":self.paused, "preferred":self.preferred, "active":self.active,
                 "accepted":self.accepted, "rejected":self.rejected,"route_changes":self.failovers,
                 "selected":self.candidates()[0].config["id"] if self.candidates() else None,

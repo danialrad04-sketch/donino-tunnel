@@ -48,37 +48,57 @@ def main():
                 for port in ([22,8090,24443,18080] if node=='iran' else [22]):execute(node,'ufw','allow',str(port)+'/tcp','comment','fixture-existing')
                 execute(node,'ufw','--force','enable')
             execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
-            plan=work/'baseline'
-            make_plan(plan,ips['iran'],ips['foreign'],[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],['frp-wss'],PASSWORD)
-            cfg=json.loads((plan/'iran/node.json').read_text());cfg['panel'].update(listen='0.0.0.0:8090',allow_insecure_http=True);atomic_json(plan/'iran/node.json',cfg)
-            execute('iran','python3','-c',"import json;json.dump({'allow_private_peers':True},open('/etc/donino-control.json','w'))")
+            # Install exactly the terminal entry point users run on EACH host.
+            password_file=work/'fixture-password';password_file.write_text(PASSWORD+'\n');password_file.chmod(0o600)
             for node in ['foreign','iran']:
-                build_payload(plan/node,work/('payload-'+node))
-                execute(node,'bash','/work/payload-'+node+'/scripts/install-node.sh','/work/payload-'+node)
-            for _ in range(30):
+                options=['--allow-private-peers'] if node=='iran' else []
+                execute(node,'bash','/source/scripts/setup.sh','--role',node,'--address',ips[node],'--password-file','/work/fixture-password',*options)
+            # An unrelated operator SSH key must survive pairing and revocation.
+            execute('foreign','ssh-keygen','-q','-t','ed25519','-N','','-f','/tmp/operator-key')
+            operator_key=execute('foreign','cat','/tmp/operator-key.pub')
+            execute('foreign','python3','-c',"import pathlib,sys;p=pathlib.Path('/root/.ssh');p.mkdir(mode=0o700,exist_ok=True);f=p/'authorized_keys';f.write_text(sys.argv[1]);f.chmod(0o600)",operator_key)
+            base='http://'+ips['iran']+':8090';foreign_base='http://'+ips['foreign']+':8091'
+            def client(base_url):
+                jar=http.cookiejar.CookieJar();opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(jar));csrf=''
+                def api(path,body=None):
+                    req=urllib.request.Request(base_url+path,data=json.dumps(body).encode() if body is not None else None,headers={'Content-Type':'application/json','X-CSRF-Token':csrf})
+                    with opener.open(req,timeout=100) as response:return json.load(response)
+                def login():
+                    nonlocal csrf
+                    csrf=api('/api/login',{'password':PASSWORD})['csrf']
+                return api,login
+            api,login=client(base);foreign_api,foreign_login=client(foreign_base)
+            for _ in range(45):
                 try:
-                    public_key=execute('iran','cat','/var/lib/donino-control/identity.pub').strip();break
-                except RuntimeError:time.sleep(1)
-            else:raise RuntimeError('controller key initialization failed')
-            execute('foreign','python3','-c',"import pathlib,sys;p=pathlib.Path('/root/.ssh');p.mkdir(mode=0o700,exist_ok=True);f=p/'authorized_keys';f.write_text(sys.argv[1]+'\\n');f.chmod(0o600)",public_key)
-            pin=execute('foreign','ssh-keygen','-lf','/etc/ssh/ssh_host_ed25519_key.pub').split()[1]
-            base='http://'+ips['iran']+':8090'
-            jar=http.cookiejar.CookieJar();opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(jar));csrf=''
-            def api(path,body=None):
-                req=urllib.request.Request(base+path,data=json.dumps(body).encode() if body is not None else None,headers={'Content-Type':'application/json','X-CSRF-Token':csrf})
-                with opener.open(req,timeout=100) as response:return json.load(response)
-            def login():
-                nonlocal csrf
-                csrf=api('/api/login',{'password':PASSWORD})['csrf']
-            for _ in range(30):
-                try:login();state=api('/api/provision/state');assert state['available'];break
+                    login();foreign_login();state=api('/api/provision/state');assert state['available']
+                    assert foreign_api('/api/foreign/state')['available'];break
                 except (OSError,AssertionError):time.sleep(1)
-            else:raise RuntimeError('panel/controller unavailable')
-            p=api('/api/provision/profiles',{'name':'Disposable foreign','host':ips['foreign'],'port':22,'fingerprint':pin})
+            else:raise RuntimeError('standalone role panels unavailable')
+            assert api('/api/status')['bootstrap'] and not api('/api/status')['paths']
+            assert foreign_api('/api/status')['role']=='foreign'
+            code=foreign_api('/api/foreign/code',{})
+            p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
+            assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
+            assert 'restrict ssh-ed25519' in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
+            assert 'agent_token' not in json.dumps(api('/api/provision/state'))
+            try:api('/api/provision/pair',{'name':'Replay','host':ips['foreign'],'agent_port':9444,'code':code['code']})
+            except urllib.error.HTTPError as e:assert e.code==400
+            else:raise AssertionError('pairing code replay succeeded')
+            report['standalone_panels_and_automatic_ssh_pairing']=True
+            report['unrelated_operator_ssh_key_preserved']=True
             spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet'],'experimental':True,'open_ufw':True}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
             original_job=job['id'];lost_panel=False
+            for _ in range(20):
+                lease=foreign_api('/api/foreign/state')['lease']
+                if lease:break
+                time.sleep(.3)
+            assert lease and lease['job_id']==original_job
+            try:foreign_api('/api/foreign/action',{'unit':'all','action':'test'})
+            except urllib.error.HTTPError as e:assert e.code==400
+            else:raise AssertionError('foreign action raced with two-node installation')
+            report['installation_lease_blocks_competing_actions']=True
             for _ in range(900):
                 try:
                     state=api('/api/provision/state');job=next(j for j in state['jobs'] if j['id']==original_job)
@@ -123,6 +143,20 @@ def main():
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
             report['results'].append({'installation':'six-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            foreign_login()
+            for _ in range(30):
+                foreign_status=foreign_api('/api/status')
+                if foreign_status['telemetry_fresh'] and len(foreign_status['paths'])==6 and all(path['healthy'] for path in foreign_status['paths']) and foreign_status['metrics']:break
+                time.sleep(2)
+            else:raise AssertionError('foreign panel did not observe real signed probes and metrics: '+json.dumps(foreign_status))
+            assert foreign_status['metrics']['bytes_up']>=6*len(data) and foreign_status['metrics']['bytes_down']>=6*len(data)
+            report['foreign_signed_health_and_local_traffic_counters']=True
+            # Native browser against BOTH actual role panels, without API mocks.
+            env={**os.environ,'DONINO_IRAN_URL':base,'DONINO_FOREIGN_URL':foreign_base}
+            ui=subprocess.run(['node',str(BASE/'scripts/test-foreign-ui.cjs')],capture_output=True,text=True,env=env,timeout=180)
+            if ui.returncode:raise AssertionError('real role UI failed: '+ui.stdout[-3000:]+ui.stderr[-3000:])
+            print(ui.stdout)
+            report['real_role_ui']=True
             # Foreign target unavailable must fail in preparation and preserve the
             # successful installation on BOTH nodes, before activation.
             before={node:execute(node,'readlink','-f','/opt/donino-link/current').strip() for node in ['iran','foreign']}
@@ -154,13 +188,19 @@ def main():
             assert [e['stage'] for e in row['events'] if e['stage'].startswith('rollback') and e['status']=='done']==['rollback-iran','rollback-foreign']
             login();assert api('/api/provision/state')['available']
             report['results'].append({'blocked_carrier':'fails after activation','actual_two_node_rollback':True,'panel_and_password_restored':True})
+            foreign_login();foreign_state=foreign_api('/api/foreign/state')
+            peer=next(p for p in foreign_state['paired'] if not p['revoked'])
+            revoked=foreign_api('/api/foreign/revoke',{'id':peer['id']});assert revoked['revoked']
+            assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
+            assert peer['id'] not in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
+            report['pairing_revocation_removes_only_owned_ssh_key']=True
             print(json.dumps(report,ensure_ascii=False))
         finally:
             Path('provision-results.json').write_text(json.dumps(report,indent=2))
             print('FIXTURE REPORT: '+json.dumps(report,ensure_ascii=False))
             for node in ['iran','foreign']:
                 try:
-                    logs=execute(node,'journalctl','--no-pager','-n','250','-u','donino-control','-u','donino-link','-u','donino-link-browser-wss')
+                    logs=execute(node,'journalctl','--no-pager','-n','250','-u','donino-control','-u','donino-foreign-agent','-u','donino-link','-u','donino-link-browser-wss')
                     Path('provision-'+node+'.log').write_text(logs)
                     print('SYSTEMD '+node+' JOURNAL:\n'+logs[-10000:])
                     # Private worker logs are deliberately not uploaded: they may

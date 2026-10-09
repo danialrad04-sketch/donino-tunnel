@@ -1,5 +1,6 @@
 """Authenticated fresh end-to-end probes, carried by the same tunnel as data."""
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -38,7 +39,7 @@ async def target_status(target):
     finally:
         if stream:
             stream.close()
-            await stream.wait_closed()
+            with contextlib.suppress(OSError):await stream.wait_closed()
 
 
 async def responder(reader, writer, key, targets=None):

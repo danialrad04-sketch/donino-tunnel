@@ -19,9 +19,18 @@ async def serve(config):
         loop.add_signal_handler(sig,done.set)
     if config['role']=='foreign':
         server=await start_responder(config['health_listen'],config['health_key'],config.get('targets'))
+        panel=None;monitor=None;store=None
         try:
+            if 'panel' in config:
+                from .foreign import ForeignMonitor
+                store=Store(config['state_db']);monitor=ForeignMonitor(config,store)
+                panel=Panel(monitor);await monitor.start();await panel.start()
+                print('Donino foreign panel ready: '+config['panel']['listen'],flush=True)
             await done.wait()
         finally:
+            if panel:await panel.stop()
+            if monitor:await monitor.stop()
+            if store:store.close()
             server.close()
             await server.wait_closed()
         return
@@ -44,6 +53,7 @@ async def doctor(config):
         addresses=[('foreign-responder',config['health_listen'])]
     else:
         addresses=[(p['id'],p['health']) for p in config['paths']]
+        if not addresses:return [{'path':'unconfigured','ok':False,'error':'no tunnels installed yet'}]
     rows=[]
     for name,address in addresses:
         try:
@@ -90,6 +100,16 @@ def main():
     p=sub.add_parser('control-enable',help='enable the local two-node installation controller (root on Iran)')
     p.add_argument('--allow-private-peers',action='store_true',help='operator opt-in for a private VPC/LAN SSH peer')
     sub.add_parser('control-run',help='internal root installation worker')
+    sub.add_parser('foreign-agent-run',help='internal foreign pairing and service agent')
+    p=sub.add_parser('init-node',help='install an independent Iran or foreign panel on this server')
+    p.add_argument('--role',required=True,choices=['iran','foreign'])
+    p.add_argument('--address',required=True)
+    p.add_argument('--panel-port',type=int)
+    p.add_argument('--agent-port',type=int,default=9444)
+    p.add_argument('--password-file')
+    p.add_argument('--no-open-ufw',action='store_true')
+    p.add_argument('--allow-private-peers',action='store_true')
+    p.add_argument('--upgrade',action='store_true')
     p=sub.add_parser('panel-access',help='configure the real admin panel listener')
     p.add_argument('--config',required=True)
     p.add_argument('--listen',required=True)
@@ -99,7 +119,19 @@ def main():
     p.add_argument('--public-host')
     args=parser.parse_args()
     try:
-        if args.command=='control-enable':
+        if args.command=='init-node':
+            from .bootstrap import install
+            from .provision import LIVE
+            existing=load_config(LIVE) if LIVE.exists() else None
+            password=None
+            if not existing or 'panel' not in existing:
+                password=Path(args.password_file).read_text().rstrip('\r\n') if args.password_file else getpass.getpass('Panel password (12+ characters): ')
+                if not args.password_file and password!=getpass.getpass('Confirm panel password: '):raise ValueError('passwords do not match')
+            print(json.dumps(install(args.role,args.address,password,args.panel_port,args.agent_port,not args.no_open_ufw,args.allow_private_peers,args.upgrade),indent=2))
+        elif args.command=='foreign-agent-run':
+            from .peer import serve_agent
+            asyncio.run(serve_agent())
+        elif args.command=='control-enable':
             from .provision import enable_control
             enable_control(args.allow_private_peers)
         elif args.command=='control-run':

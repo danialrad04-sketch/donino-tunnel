@@ -52,6 +52,7 @@ if ((${#fetch_args[@]})); then
   "$release_dir/venv/bin/donino-link" fetch-engines "${fetch_args[@]}" --destination "$release_dir/bin" --cache /var/cache/donino-link
 fi
 "$release_dir/venv/bin/donino-link" prepare-paqet --node "$release_dir/node"
+"$release_dir/venv/bin/python" -m donino_link.bootstrap --preserve "$release_dir/node"
 
 chown -R root:donino-link "$release_dir"
 find "$release_dir" -type d -exec chmod 0750 {} +
@@ -104,6 +105,10 @@ while IFS= read -r service; do systemctl is-active --quiet "$service"; done < <(
 role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["role"])' "$release_dir/node/install.json")
 if [[ "$role" == iran ]]; then
   "$release_dir/venv/bin/donino-link" control-enable
+else
+  if python3 -c 'import json,sys;sys.exit(0 if "panel" in json.load(open(sys.argv[1])) else 1)' "$release_dir/node/node.json"; then
+    "$release_dir/venv/bin/python" -c 'from donino_link.peer import enable_agent;enable_agent()'
+  fi
 fi
 trap - ERR
 echo 'Donino Link services started. Open only the ports listed in plan.json in provider/host firewalls; then run doctor.'

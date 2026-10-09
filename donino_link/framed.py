@@ -14,6 +14,7 @@ import struct
 import time
 from pathlib import Path
 from .config import endpoint
+from .runtime import RuntimeStats
 
 CHUNK=32768
 HEADER=struct.Struct('!BI')
@@ -33,14 +34,16 @@ class FramedRelay:
         self.config=config
         self.servers=[]
         self.tasks=set()
+        self.stats=RuntimeStats(config.get('stats_file'))
 
     async def handle(self,reader,writer,target):
         task=asyncio.current_task();self.tasks.add(task)
-        upstream=None;workers=[]
+        upstream=None;workers=[];counted=False
         try:
             if len(self.tasks)>1024:
                 return
             remote,upstream=await asyncio.wait_for(asyncio.open_connection(*endpoint(target)),5)
+            self.stats.active+=1;self.stats.accepted+=1;counted=True
             # Iran accepts plain TCP; foreign accepts framed carrier bytes.
             plain_reader,plain_writer,wire_reader,wire_writer=(reader,writer,remote,upstream) if self.config['role']=='iran' else (remote,upstream,reader,writer)
             activity=[time.monotonic()]
@@ -49,6 +52,8 @@ class FramedRelay:
                     activity[0]=time.monotonic()
                     wire_writer.write(HEADER.pack(0,len(block))+block)
                     await wire_writer.drain()
+                    if self.config['role']=='foreign':self.stats.bytes_down+=len(block)
+                    else:self.stats.bytes_up+=len(block)
                 wire_writer.write(HEADER.pack(1,0))
                 await wire_writer.drain()
             async def decode():
@@ -59,6 +64,8 @@ class FramedRelay:
                         plain_writer.write_eof();await plain_writer.drain()
                         return
                     plain_writer.write(block);await plain_writer.drain()
+                    if self.config['role']=='foreign':self.stats.bytes_up+=len(block)
+                    else:self.stats.bytes_down+=len(block)
             async def guard():
                 while True:
                     await asyncio.sleep(5)
@@ -80,6 +87,7 @@ class FramedRelay:
                     stream.close()
                     with contextlib.suppress(OSError):await stream.wait_closed()
             self.tasks.discard(task)
+            if counted:self.stats.active-=1
 
     async def start(self):
         if self.config['role'] not in ('iran','foreign'):
@@ -91,6 +99,7 @@ class FramedRelay:
         try:
             for item in self.config['listeners']:
                 self.servers.append(await asyncio.start_server(lambda r,w,t=item['target']:self.handle(r,w,t),*endpoint(item['listen'])))
+            await self.stats.start()
         except BaseException:
             await self.stop();raise
 
@@ -100,6 +109,7 @@ class FramedRelay:
         for task in list(self.tasks):task.cancel()
         await asyncio.gather(*self.tasks,return_exceptions=True)
         self.servers.clear()
+        await self.stats.stop()
 
 
 async def run(config):

@@ -74,13 +74,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - run: pip install .
+      - run: npm install --no-save playwright@1.62.1
       # The runner host is Ubuntu; containers represent Debian nodes. Permit
       # unprivileged user namespaces on this disposable CI host so Ubuntu's
       # host-wide AppArmor restriction does not override Debian's sandbox policy.
       # Chromium namespace and seccomp sandboxes stay enabled.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: python scripts/test-provision.py
+        env:
+          DONINO_EMIT_SCREENSHOT: '1'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -89,3 +95,4 @@ jobs:
             provision-results.json
             provision-iran.log
             provision-foreign.log
+            ui-role-results/

@@ -1,26 +1,47 @@
 #!/usr/bin/env bash
-# Interactive controller-side setup. Password is read by getpass, never an argv.
+# Run locally on EACH server. No SSH key/password is copied by the operator.
 set -Eeuo pipefail
 umask 077
+[[ $(id -u) -eq 0 ]] || { echo 'Run: sudo bash scripts/setup.sh' >&2; exit 1; }
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-python3 -m venv "$source_dir/.venv"
-"$source_dir/.venv/bin/pip" install --disable-pip-version-check "$source_dir"
-read -r -p 'Iran public IP/domain: ' iran_address
-read -r -p 'Foreign public IP/domain: ' foreign_address
-read -r -p 'Iran SSH host (root@IP): ' iran_ssh
-read -r -p 'Foreign SSH host (root@IP): ' foreign_ssh
-read -r -p 'SSH private key path: ' ssh_identity
-read -r -p 'Public TCP port on Iran [443]: ' public_port
-public_port=${public_port:-443}
-read -r -p 'Origin TCP service port on foreign [443]: ' origin_port
-origin_port=${origin_port:-443}
-read -r -p 'New private plan directory [./private-plan]: ' plan_directory
-plan_directory=${plan_directory:-./private-plan}
-"$source_dir/.venv/bin/donino-link" plan --iran "$iran_address" --foreign "$foreign_address" \
-  --service "main=0.0.0.0:$public_port,127.0.0.1:$origin_port" --output "$plan_directory"
-echo 'Open the ports in plan.json in your provider/host firewalls before deployment.'
-echo 'Verify both SSH host fingerprints through your VPS provider console and add them to known_hosts.'
-read -r -p 'Type deploy to install both nodes, or press Enter to keep the plan only: ' deploy_choice
-if [[ "$deploy_choice" == deploy ]]; then
-  "$source_dir/.venv/bin/donino-link" deploy --plan "$plan_directory" --iran-host "$iran_ssh" --foreign-host "$foreign_ssh" --identity "$ssh_identity"
+role='';address='';forward=()
+while (($#)); do
+  case "$1" in
+    --role) role=${2:?}; shift 2;;
+    --address) address=${2:?}; shift 2;;
+    --panel-port|--agent-port|--password-file) forward+=("$1" "${2:?}"); shift 2;;
+    --upgrade|--no-open-ufw|--allow-private-peers) forward+=("$1"); shift;;
+    --help) echo 'sudo bash scripts/setup.sh [--role iran|foreign] [--address IP_OR_DNS] [--panel-port PORT] [--agent-port PORT] [--upgrade]'; exit 0;;
+    *) echo "Unknown option: $1" >&2; exit 1;;
+  esac
+done
+if [[ -z "$role" ]]; then
+  echo 'Donino Tunnel — install this server'
+  echo '1) Iran: control panel and automatic two-node installer'
+  echo '2) Foreign: monitoring panel, pairing and origin health'
+  read -r -p 'Server role [1/2]: ' answer
+  case "$answer" in 1|iran) role=iran;; 2|foreign) role=foreign;; *) echo 'Select 1 or 2.' >&2; exit 1;; esac
 fi
+[[ "$role" == iran || "$role" == foreign ]] || exit 1
+[[ -n "$address" ]] || read -r -p 'Public IP/domain of THIS server: ' address
+. /etc/os-release
+[[ "$ID" == debian && ( "$VERSION_ID" == 12 || "$VERSION_ID" == 13 ) || "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || { echo 'Supported: Debian 12/13 or Ubuntu 24.04.' >&2; exit 1; }
+[[ -d /run/systemd/system ]] || { echo 'A running systemd is required.' >&2; exit 1; }
+apt-get update -q
+packages=(python3 python3-venv python3-pip openssl ca-certificates openssh-client)
+[[ "$role" != foreign ]] || packages+=(openssh-server)
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${packages[@]}"
+if [[ "$role" == foreign ]]; then
+  ssh-keygen -A
+  /usr/sbin/sshd -t
+  systemctl enable --now ssh.service
+fi
+stage=$(mktemp -d /var/tmp/donino-setup-XXXXXX)
+trap 'rm -rf -- "$stage"' EXIT
+cp -a "$source_dir/donino_link" "$source_dir/pyproject.toml" "$stage/"
+python3 -m venv "$stage/venv"
+install -d -m 0700 /var/cache/donino-link/pip
+"$stage/venv/bin/pip" --cache-dir /var/cache/donino-link/pip install --disable-pip-version-check "$stage"
+"$stage/venv/bin/donino-link" init-node --role "$role" --address "$address" "${forward[@]}"
+echo 'Open the printed HTTP panel URL. On foreign generate a pairing code; enter it in Iran.'
+echo 'Provider firewall: allow the panel port, foreign pairing TCP port (default 9444), and the tunnel ports shown by the panel.'

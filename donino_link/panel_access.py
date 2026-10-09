@@ -8,8 +8,7 @@ from .config import atomic_json,endpoint,load_config,loopback
 def configure_panel(path,listen,http=False,cert=None,key=None,public_host=None):
     path=Path(path).resolve()
     config=load_config(path)
-    if config['role']!='iran':
-        raise ValueError('admin panel belongs on the Iran gateway node')
+    if 'panel' not in config:raise ValueError('install the role panel before changing its listener')
     endpoint(listen)
     if not http and not (cert and key) and not loopback(listen):
         raise ValueError('choose --http explicitly or provide both --cert and --key')
@@ -18,8 +17,9 @@ def configure_panel(path,listen,http=False,cert=None,key=None,public_host=None):
     if bool(cert)!=bool(key):
         raise ValueError('provide both --cert and --key')
     port=endpoint(listen)[1]
-    occupied=[s['listen'] for s in config['services']]
-    for item in config['paths']:
+    occupied=[s['listen'] for s in config.get('services',[])]
+    if config['role']=='foreign':occupied.extend([config['health_listen'],*config.get('targets',{}).values()])
+    for item in config.get('paths',[]):
         occupied.extend([item['health'],*item['backends'].values()])
     if port in [endpoint(address)[1] for address in occupied]:
         raise ValueError('panel port conflicts with a gateway service or backend')

@@ -47,8 +47,11 @@ class Panel:
             web.post("/api/action",self.action),web.get("/api/export",self.export),
             web.get('/api/provision/state',self.provision),
             web.post('/api/provision/profiles',self.provision),
+            web.post('/api/provision/pair',self.provision),
             web.post('/api/provision/preview',self.provision),
             web.post('/api/provision/start',self.provision),
+            web.get('/api/foreign/state',self.foreign),web.post('/api/foreign/code',self.foreign),
+            web.post('/api/foreign/revoke',self.foreign),web.post('/api/foreign/action',self.foreign),
         ])
 
     @web.middleware
@@ -170,6 +173,7 @@ class Panel:
         return web.json_response({"ok":True})
 
     async def provision(self, request):
+        if self.gateway.config['role']!='iran':return web.json_response({'available':False,'error':'این عملیات مخصوص پنل ایران است.'},status=400)
         # Fixed local endpoint. Public requests cannot choose socket, command,
         # identity path, remote script, download URL or arbitrary worker route.
         from .provision import SOCKET
@@ -193,12 +197,36 @@ class Panel:
         except ValueError:
             raise web.HTTPBadRequest(text='invalid JSON')
 
+    async def foreign(self,request):
+        if self.gateway.config['role']!='foreign':return web.json_response({'error':'این عملیات مخصوص پنل خارج است.'},status=400)
+        from .peer import SOCKET
+        route=request.path.removeprefix('/api/foreign')
+        try:
+            body=await request.json() if request.method=='POST' else None
+            async with ClientSession(connector=UnixConnector(path=str(SOCKET)),timeout=ClientTimeout(total=15)) as session:
+                async with session.request(request.method,'http://localhost'+route,json=body) as response:
+                    result=await response.json()
+                    if request.method=='POST' and response.status<400:self.gateway.store.event('foreign-action',{'operation':route,'unit':body.get('unit') if isinstance(body,dict) else None})
+                    return web.json_response(result,status=response.status)
+        except (ClientError,OSError,asyncio.TimeoutError):return web.json_response({'error':'سرویس مدیریت خارج در دسترس نیست.'},status=503)
+        except ValueError:raise web.HTTPBadRequest(text='invalid JSON')
+
     async def export(self, request):
         # Observations only, deliberately excludes tokens and configuration secrets.
         return web.json_response(self.gateway.snapshot(),headers={"Content-Disposition":"attachment; filename=donino-link-observations.json"})
 
     async def metrics(self, request):
         g = self.gateway
+        if g.config['role']=='foreign':
+            snapshot=g.snapshot();data=snapshot.get('metrics')
+            lines=['# TYPE donino_foreign_metrics_available gauge','donino_foreign_metrics_available '+str(int(data is not None))]
+            if data:
+                for key,value in data.items():lines.append('donino_foreign_'+key+' '+str(value))
+            for path in snapshot['paths']:
+                label='{path="'+path['id']+'"}'
+                lines.append('donino_foreign_path_observation_fresh'+label+' '+str(int(path['observation']=='fresh')))
+                if path['observation']=='fresh':lines.append('donino_foreign_path_healthy'+label+' '+str(int(path['healthy'])))
+            return web.Response(text='\n'.join(lines)+'\n',content_type='text/plain')
         lines = ["# TYPE donino_active_connections gauge",f"donino_active_connections {g.active}",
                  "# TYPE donino_accepted_total counter",f"donino_accepted_total {g.accepted}",
                  "# TYPE donino_rejected_total counter",f"donino_rejected_total {g.rejected}"]

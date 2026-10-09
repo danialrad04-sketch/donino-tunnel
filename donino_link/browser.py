@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from aiohttp import web, WSMsgType
 from .config import endpoint
+from .runtime import RuntimeStats
 
 CHUNK = 32768
 WINDOW = 16
@@ -44,6 +45,7 @@ class BrowserServer:
         self.config = config
         self.active = 0
         self.runner = None
+        self.stats = RuntimeStats(config.get('stats_file'))
         self.app = web.Application(client_max_size=1024)
         self.app.router.add_get('/', self.page)
         self.app.router.add_get('/api/stream/{service}', self.stream)
@@ -62,11 +64,14 @@ class BrowserServer:
         if self.active >= MAX_STREAMS:
             raise web.HTTPServiceUnavailable()
         self.active += 1
+        measured=request.match_info['service']!='health'
+        if measured:self.stats.active+=1
         writer = None
         ws = web.WebSocketResponse(max_msg_size=CHUNK+2, compress=False, heartbeat=20, receive_timeout=300)
         try:
             reader, writer = await asyncio.wait_for(asyncio.open_connection(*endpoint(target)), 5)
             await ws.prepare(request)
+            if measured:self.stats.accepted+=1
             await ws.send_str('ready')
             down_credit = Credits()
             up_eof = asyncio.Event()
@@ -86,6 +91,7 @@ class BrowserServer:
                             await ws.close()
                         return
                     await ws.send_bytes(bytes([DATA])+block)
+                    if measured:self.stats.bytes_down+=len(block)
 
             async def receive():
                 async for message in ws:
@@ -95,6 +101,7 @@ class BrowserServer:
                     if kind == DATA and 0 < len(payload) <= CHUNK and not up_eof.is_set():
                         writer.write(payload)
                         await writer.drain()
+                        if measured:self.stats.bytes_up+=len(payload)
                         await ws.send_bytes(bytes([UP_ACK]))
                     elif kind == DOWN_ACK and not payload:
                         down_credit.acknowledge()
@@ -131,6 +138,7 @@ class BrowserServer:
                 with contextlib.suppress(OSError):
                     await writer.wait_closed()
             self.active -= 1
+            if measured:self.stats.active-=1
         return ws
 
     async def start(self):
@@ -146,10 +154,12 @@ class BrowserServer:
         self.runner = web.AppRunner(self.app, access_log=None)
         await self.runner.setup()
         await web.TCPSite(self.runner, *endpoint(cfg['listen']), ssl_context=context).start()
+        await self.stats.start()
 
     async def stop(self):
         if self.runner:
             await self.runner.cleanup()
+        await self.stats.stop()
 
 
 class BrowserClient:

@@ -285,7 +285,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 else:
                     for suffix in ['crt','key']:
                         shutil.copy2(output/'ca'/f'browser.{suffix}',root/'certs'/f'browser.{suffix}')
-                    common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings})
+                    common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings},stats_file='/var/lib/donino-link/browser-foreign.json')
                 text=json.dumps(common,indent=2)+'\n'
                 command=f'{OPT}/venv/bin/python -m donino_link.browser --config {ETC}/{file}'
             elif t.startswith('frp'):
@@ -335,7 +335,7 @@ WantedBy=multi-user.target
     if relay_transports:
         for role in ['iran','foreign']:
             listeners=relay_listeners if role=='iran' else [{'listen':f'127.0.0.1:{relay_base+j}','target':s['target']} for j,s in enumerate(services)]
-            atomic_json(output/role/'transports'/'framed.json',{'role':role,'listeners':listeners})
+            atomic_json(output/role/'transports'/'framed.json',{'role':role,'listeners':listeners,'stats_file':f'/var/lib/donino-link/framed-{role}.json'})
             name='donino-link-framed.service'
             command=f'{OPT}/venv/bin/python -m donino_link.framed --config {ETC}/transports/framed.json'
             write(output/role/'units'/name,unit('framed stream adapter',command))

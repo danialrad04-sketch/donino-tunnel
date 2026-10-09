@@ -70,8 +70,12 @@ def load_config(path):
         for target in data.get('targets',{}).values():
             if not loopback(target):
                 raise ValueError('foreign targets must be literal loopback')
+        if 'panel' in data: validate_panel(data['panel'])
         return data
     if not data.get("services") or not data.get("paths"):
+        if data.get('bootstrap') is not True or data.get('services') != [] or data.get('paths') != []:
+            raise ValueError("at least one service and one path are required")
+    if not isinstance(data['services'],list) or not isinstance(data['paths'],list):
         raise ValueError("at least one service and one path are required")
     names, listeners = set(), set()
     for s in data["services"]:
@@ -106,7 +110,12 @@ def load_config(path):
             raise ValueError(f"invalid policy {key}")
         if key in ("failures", "recoveries", "max_connections") and not isinstance(v, int):
             raise ValueError(f"{key} must be an integer")
-    panel = data["panel"]
+    validate_panel(data['panel'])
+    return data
+
+
+def validate_panel(panel):
+    if not isinstance(panel,dict): raise ValueError('invalid panel configuration')
     endpoint(panel["listen"])
     if bool(panel.get('tls_cert')) != bool(panel.get('tls_key')):
         raise ValueError('panel TLS certificate and key must be set together')
@@ -114,4 +123,3 @@ def load_config(path):
         raise ValueError('allow_insecure_http must be boolean')
     if not loopback(panel["listen"]) and not (panel.get("tls_cert") and panel.get("tls_key")) and panel.get('allow_insecure_http') is not True:
         raise ValueError('public panel requires TLS or an explicit allow_insecure_http=true setting')
-    return data

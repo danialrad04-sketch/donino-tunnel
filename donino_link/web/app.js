@@ -7,10 +7,10 @@ const bytes = n => n >= 2**30 ? (n/2**30).toFixed(2)+" GB" : n >= 2**20 ? (n/2**
 function el(tag, text, cls) { const n=document.createElement(tag); if(text!==undefined) n.textContent=text; if(cls) n.className=cls; return n; }
 async function api(path, body) {
   const r=await fetch(path,{credentials:"same-origin",method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:body===undefined?undefined:JSON.stringify(body)});
-  if(!r.ok){ let detail="";if(path.startsWith("/api/provision/")){try{detail=(await r.json()).error||"";}catch{}} if(r.status===401 && path!=="/api/login") loggedOut(); throw new Error(detail||(r.status===429?"تلاش‌ها زیاد بوده؛ پنج دقیقه صبر کن.":r.status===401?"رمز نادرست است یا نشست پایان یافته.":"درخواست انجام نشد؛ اتصال و دسترسی را بررسی کن.")); }
+  if(!r.ok){ let detail="";if(path.startsWith("/api/provision/")||path.startsWith("/api/foreign/")){try{detail=(await r.json()).error||"";}catch{}} if(r.status===401 && path!=="/api/login") loggedOut(); throw new Error(detail||(r.status===429?"تلاش‌ها زیاد بوده؛ پنج دقیقه صبر کن.":r.status===401?"رمز نادرست است یا نشست پایان یافته.":"درخواست انجام نشد؛ اتصال و دسترسی را بررسی کن.")); }
   return r.json();
 }
-function loggedOut(){ $("login").hidden=false; $("dashboard").hidden=true; csrf=""; state=null; previousTraffic=null; }
+function loggedOut(){ $("login").hidden=false; $("dashboard").hidden=true; csrf=""; state=null; previousTraffic=null; $("foreign-code-value").value="";$("connection-code").value=""; }
 function loggedIn(){ $("login").hidden=true; $("dashboard").hidden=false; refresh(); setTimeout(pollSetup,0); }
 function notice(text){ $("notice").textContent=text; $("notice").hidden=!text; }
 function toast(text){$("toast").textContent=text;$("toast").hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").hidden=true,4500);}
@@ -35,17 +35,18 @@ const modeNames={enabled:"فعال",disabled:"غیرفعال",draining:"در ح�
 const eventNames={"path-health":"سلامت مسیر","operator":"عملیات مدیر","login":"ورود مدیر","login-failed":"ورود ناموفق","route-change":"تغییر مسیر","backend-connect-failed":"مقصد در دسترس نیست"};
 function render(d){
   state=d;
+  const foreign=d.role==="foreign";configureRole(foreign);
   const healthy=d.paths.filter(p=>p.healthy&&p.mode==="enabled");
   $("healthy").textContent=fa(healthy.length)+" / "+fa(d.paths.length);
-  $("active").textContent=fa(d.active);
-  const selected=d.paths.find(p=>p.id===d.selected);
+  $("active").textContent=d.active===null?"—":fa(d.active);
+  const selected=foreign?healthy[0]:d.paths.find(p=>p.id===d.selected);
   $("selected").textContent=d.paused?"ورودی جدید متوقف است":d.selected||"مسیر سالمی در دسترس نیست";
   $("hero-description").textContent=d.preferred?"مسیر ترجیحی: "+d.preferred+" · در صورت خرابی، مسیر سالم بعدی انتخاب می‌شود.":"انتخاب خودکار فعال است؛ سلامت هر مسیر با پاسخ امضاشدهٔ سرور خارج بررسی می‌شود.";
   $("latency").textContent=selected?.latency_ms!==null&&selected?.latency_ms!==undefined?selected.latency_ms.toFixed(1)+" ms":"—";
-  const total=d.paths.reduce((sum,p)=>sum+p.bytes_up+p.bytes_down,0);
-  $("traffic").textContent=bytes(total);
-  if(previousTraffic&&d.time>previousTraffic.time&&total>=previousTraffic.total){$("traffic-rate").textContent="نرخ مجموع دو جهت: "+bytes((total-previousTraffic.total)/(d.time-previousTraffic.time))+"/s";}
-  previousTraffic={time:d.time,total};
+  const total=foreign?(d.metrics?d.metrics.bytes_up+d.metrics.bytes_down:null):d.paths.reduce((sum,p)=>sum+p.bytes_up+p.bytes_down,0);
+  $("traffic").textContent=total===null?"—":bytes(total);
+  if(total!==null&&previousTraffic&&d.time>previousTraffic.time&&total>=previousTraffic.total){$("traffic-rate").textContent="نرخ مجموع دو جهت: "+bytes((total-previousTraffic.total)/(d.time-previousTraffic.time))+"/s";}
+  previousTraffic=total===null?null:{time:d.time,total};
   $("routing-mode").textContent=d.preferred?"مسیر ترجیحی":"انتخاب خودکار";
   $("path-summary").textContent=fa(d.paths.length)+" مسیر · "+fa(healthy.length)+" سالم و فعال";
   $("pause").textContent=d.paused?"ادامهٔ اتصال‌های جدید":"توقف اتصال‌های جدید";
@@ -56,16 +57,16 @@ function render(d){
     if(p.id===d.selected) card.classList.add("selected");
     card.querySelector("h3").textContent=p.id;
     card.querySelector(".transport").textContent=p.transport.toUpperCase();
-    const b=card.querySelector(".path-status"); b.textContent=p.healthy?"سالم":"ناموفق";b.classList.add(p.healthy?"good":"bad");
+    const b=card.querySelector(".path-status"); b.textContent=foreign&&p.observation==="unknown"?"نامشخص":p.healthy?"سالم":"ناموفق";b.classList.add(p.healthy?"good":foreign&&p.observation==="unknown"?"":"bad");
     const metrics=card.querySelector(".path-metrics");
-    [[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","تأخیر"],[fa(p.active),"اتصال فعال"],[bytes(p.bytes_up+p.bytes_down),"ترافیک"]].forEach(([v,l])=>{const n=el("div");n.append(el("b",v),el("span",l));metrics.append(n);});
+    (foreign?[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","آزمون از ایران"],[d.units.find(u=>u.unit==="donino-link-"+p.id+".service")?.active?"روشن":"خاموش","سرویس محلی"],[p.observation==="fresh"?"تازه":"نامشخص","شاهد ارتباط"]]:[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","تأخیر"],[fa(p.active),"اتصال فعال"],[bytes(p.bytes_up+p.bytes_down),"ترافیک"]]).forEach(([v,l])=>{const n=el("div");n.append(el("b",v),el("span",l));metrics.append(n);});
     card.querySelector(".mode").textContent=modeNames[p.mode];
-    const menu=card.querySelector("select");menu.onchange=()=>{if(menu.value)action(p.id,menu.value);};
+    const menu=card.querySelector("select");menu.hidden=foreign;if(foreign)card.querySelector(".mode").textContent="پایش از پنل ایران";menu.onchange=()=>{if(menu.value)action(p.id,menu.value);};
     return card;
   });if(document.activeElement?.tagName!=="SELECT")$("path-list").replaceChildren(...cards);
   chart(d.paths);
   const remote=d.paths.find(p=>p.healthy&&p.remote?.memory_total)?.remote;
-  const hosts=[["سرور ایران",d.host],["سرور خارج",remote]];
+  const hosts=foreign?[["سرور خارج",d.host]]:[["سرور ایران",d.host],["سرور خارج",remote]];
   $("hosts").replaceChildren(...hosts.map(([name,h])=>{
     const n=el("div",undefined,"host"),head=el("div",undefined,"host-head");
     head.append(el("strong",name),el("span",h?"دادهٔ زنده":"در انتظار پاسخ","muted"));n.append(head);
@@ -80,6 +81,8 @@ function render(d){
   $("event-list").replaceChildren(...d.events.map(e=>{const n=el("div",undefined,"event");n.append(el("span",eventNames[e.kind]||e.kind,"event-kind"),el("span",eventDescription(e),"event-detail"),el("time",new Date(e.time*1000).toLocaleString("fa-IR")));return n;}));
   if(!d.events.length)$("event-list").append(el("p","هنوز رویدادی ثبت نشده است.","empty-events"));
   $("updated").textContent="به‌روز هر ۳ ثانیه";
+  if(foreign)renderForeign(d);
+  else if(d.bootstrap)notice("پنل ایران آماده است. ابتدا خارج را جفت‌سازی کن، سپس نقشهٔ تانل را بساز.");
   $("uptime").textContent="زمان فعالیت: "+fa(Math.floor(d.uptime/60))+" دقیقه";
 }
 function eventDescription(e){
@@ -134,6 +137,7 @@ function renderSetup(data){
   $("setup-unavailable").hidden=!!available;$("setup-unavailable").textContent=data.reason||"سرویس نصب خودکار در دسترس نیست.";
   $("setup-controls").hidden=!available;if(!available)return;
   $("setup-public-key").value=data.public_key;
+  if(data.iran_address&&!$("setup-iran").value)$("setup-iran").value=data.iran_address;
   const select=$("setup-profile"),selected=select.value,ids=JSON.stringify(data.profiles.map(p=>[p.id,p.name]));
   if(select.dataset.profiles!==ids){select.replaceChildren(el("option",data.profiles.length?"انتخاب سرور خارج":"ابتدا اتصال خارج را ثبت کن"));select.firstChild.value="";data.profiles.forEach(p=>{const opt=el("option",p.name+" · "+p.host);opt.value=p.id;select.append(opt);});select.value=selected;select.dataset.profiles=ids;}
   if(!$("setup-transports").children.length){data.transports.forEach(t=>{const label=el("label"),input=el("input");input.type="checkbox";input.value=t.id;input.checked=["frp-wss","frp-quic"].includes(t.id);input.dataset.experimental=String(t.experimental);label.append(input,el("span",t.id+(t.experimental?" · آزمایشی":"")));$("setup-transports").append(label);});}
@@ -145,10 +149,48 @@ function renderSetup(data){
   const latest=new Map();job.events.forEach(e=>latest.set(e.stage,e));$("setup-job-steps").replaceChildren(...[...latest.values()].map(e=>{const n=el("li",undefined,"step-"+e.status);n.append(el("strong",setupStageNames[e.stage]||e.stage),el("small",e.status==="done"?"انجام شد":e.status==="running"?"در حال اجرا":"نیاز به بررسی"));return n;}));
   $("setup-job-probes").replaceChildren(...job.probes.map(p=>{const failed=Object.entries(p.services||{}).filter(([,ok])=>!ok).map(([id])=>id);return el("div",p.path+" · "+(p.ok?"مسیر سالم · "+p.latency_ms+" ms":"مسیر ناموفق")+(failed.length?" · مقصد ناموفق: "+failed.join(", "):""),"setup-job-probe");}));
 }
-async function pollSetup(){if(!csrf||setupPolling)return;setupPolling=true;const session=csrf;try{const d=await api("/api/provision/state");if(csrf===session)renderSetup(d);}catch(e){if(csrf===session){$("setup-status").textContent="در انتظار ارتباط";$("setup-status").className="badge bad";}}finally{setupPolling=false;}}
+async function pollSetup(){if(!csrf||setupPolling||state?.role==="foreign")return;setupPolling=true;const session=csrf;try{const d=await api("/api/provision/state");if(csrf===session)renderSetup(d);}catch(e){if(csrf===session){$("setup-status").textContent="در انتظار ارتباط";$("setup-status").className="badge bad";}}finally{setupPolling=false;}}
 async function setupCall(path,body){if(setupRequest)throw new Error("یک درخواست نصب در حال انجام است؛ منتظر نتیجه بمان.");setupRequest=true;$("connection-save").disabled=true;$("setup-preview").disabled=true;$("setup-start").disabled=true;try{return await api(path,body);}finally{setupRequest=false;if(setupState)renderSetup(setupState);}}
-$("connection-form").onsubmit=async e=>{e.preventDefault();$("connection-result").textContent="در حال بررسی اثر انگشت و اتصال SSH…";try{const p=await setupCall("/api/provision/profiles",{name:$("connection-name").value.trim(),host:$("connection-host").value.trim(),port:Number($("connection-port").value),fingerprint:$("connection-pin").value.trim()});await pollSetup();$("setup-profile").value=p.id;invalidatePlan();$("connection-result").textContent="اتصال خارج بررسی و ذخیره شد.";}catch(e){$("connection-result").textContent=e.message;}};
+$("connection-form").onsubmit=async e=>{e.preventDefault();$("connection-result").textContent="در حال تأیید هویت خارج و نصب خودکار کلید SSH…";try{const p=await setupCall("/api/provision/pair",{name:$("connection-name").value.trim(),host:$("connection-host").value.trim(),agent_port:Number($("connection-agent-port").value),code:$("connection-code").value.trim()});$("connection-code").value="";await pollSetup();$("setup-profile").value=p.id;invalidatePlan();$("connection-result").textContent="خارج جفت شد؛ اتصال SSH با هویت تأییدشده آماده است.";}catch(e){$("connection-result").textContent=e.message;}};
+$("manual-connection-form").onsubmit=async e=>{e.preventDefault();try{const p=await setupCall("/api/provision/profiles",{name:$("connection-name").value.trim()||"خارج",host:$("manual-host").value.trim(),port:Number($("connection-port").value),fingerprint:$("connection-pin").value.trim()});await pollSetup();$("setup-profile").value=p.id;invalidatePlan();toast("اتصال قدیمی ثبت شد.");}catch(e){toast(e.message);}};
 $("setup-form").onsubmit=async e=>{e.preventDefault();invalidatePlan();$("setup-error").textContent="";const transports=[...$("setup-transports").querySelectorAll("input:checked")].map(n=>n.value);if(!transports.length){$("setup-error").textContent="حداقل یک پروتکل انتخاب کن.";return;}const services=[...$("setup-services").children].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(n=>[n.dataset.field,n.value.trim()])));const spec={profile_id:$("setup-profile").value,iran:$("setup-iran").value.trim(),services,transports,experimental:$("setup-experimental").checked,open_ufw:$("setup-open-ufw").checked,base_port:Number($("setup-base").value),carrier_base:Number($("setup-carrier").value),health_port:Number($("setup-health").value),paqet_port:Number($("setup-paqet").value)};if($("setup-foreign").value.trim())spec.foreign=$("setup-foreign").value.trim();if($("setup-browser").value)spec.browser_port=Number($("setup-browser").value);try{const p=await setupCall("/api/provision/preview",spec);setupPlan=p;$("setup-review-summary").textContent=p.summary.iran+" ⇄ "+p.summary.foreign+" · "+p.summary.transports.join(" + ")+" · "+fa(p.summary.services.length)+" سرویس";$("setup-firewall").replaceChildren(...["iran","foreign"].map(role=>{const n=el("div");n.append(el("strong",role==="iran"?"پورت‌های ورودی ایران":"پورت‌های ورودی خارج"));["tcp","udp"].forEach(proto=>{n.append(el("code",proto.toUpperCase()+": "+(p.summary.firewall[role][proto].join(", ")||"—")));});return n;}));$("setup-review").hidden=false;$("setup-confirm").checked=false;$("setup-review").scrollIntoView({behavior:"smooth",block:"nearest"});}catch(e){$("setup-error").textContent=e.message;}};
 $("setup-start").onclick=async()=>{if(!setupPlan||!$("setup-confirm").checked)return;try{await setupCall("/api/provision/start",{plan_id:setupPlan.id,confirm_replace:true});invalidatePlan();await pollSetup();toast("عملیات نصب شروع شد؛ مراحل روی سرور ادامه پیدا می‌کنند.");}catch(e){$("setup-error").textContent=e.message;toast(e.message);}};
 $("setup-details").addEventListener("toggle",()=>{if($("setup-details").open)pollSetup();});
 setInterval(()=>{if(csrf)pollSetup();},4000);
+
+// Foreign role has local controls and dated end-to-end observations, not routing.
+let displayedRole="",foreignPending=false;
+const foreignUnitCards=new Map();
+function configureRole(foreign){
+  const role=foreign?"foreign":"iran";if(displayedRole===role)return;displayedRole=role;
+  $("setup").hidden=foreign;$("foreign-node").hidden=!foreign;$("nav-setup").hidden=foreign;$("nav-foreign").hidden=!foreign;
+  $("auto").hidden=foreign;$("pause").hidden=foreign;
+  document.querySelector("header h1").firstChild.textContent=foreign?"مرکز مدیریت خارج":"مرکز فرمان ارتباط";
+  document.querySelector("header p").textContent=foreign?"سرور خروج، سرویس مقصد و اتصال تأییدشده به ایران.":"هر مسیر، هر اتصال؛ یک تصویر روشن.";
+  if(foreign){document.querySelector("#guide h3").textContent="سه بررسی، سه نتیجهٔ مستقل";const ps=document.querySelectorAll("#guide p");ps[0].textContent="روشن بودن systemd فقط وضعیت سرویس محلی است. دسترسی TCP مقصد جدا سنجیده می‌شود. سلامت تانل به آزمون تازه و امضاشده از ایران نیاز دارد؛ شاهد قدیمی یا غایب نامشخص نمایش داده می‌شود.";ps[1].textContent="ترافیک و اتصال‌های فعال از relayهای همین سرور خوانده می‌شوند؛ شمارنده‌ها از شروع فرآیندهای فعلی‌اند. انتخاب مسیر و نصب کامل دو سرور در پنل ایران انجام می‌شود.";}
+}
+function renderForeign(d){
+  const f=d.foreign||{},busy=foreignPending||f.action_busy||!!f.lease;
+  $("selected").textContent=d.telemetry_fresh?"ارتباط از ایران تأیید شد":d.bootstrap?"آمادهٔ جفت‌سازی":"در انتظار آزمون ایران";
+  $("hero-description").textContent=d.telemetry_fresh?"آزمون تازه از ایران دریافت شده؛ سلامت هر مسیر و سرویس مقصد را در کارت‌ها ببین.":"سرویس‌های خارج جداگانه پایش می‌شوند. برای تأیید دوطرفه، پنل ایران را جفت‌سازی و تانل را نصب کن.";
+  $("routing-mode").textContent="نقش سرور: خارج";
+  notice(!f.available?"سرویس مدیریت خارج در دسترس نیست؛ وضعیت systemd را بررسی کن.":f.lease?"نصب دو سرور در جریان است؛ کنترل دستی سرویس‌ها تا پایان نصب متوقف می‌شود.":!d.telemetry_fresh?"هنوز شاهد تازهٔ تانل از ایران نداریم. روشن بودن سرویس‌ها به‌تنهایی سلامت تانل را ثابت نمی‌کند.":"");
+  $("foreign-agent-status").textContent=f.available?(f.lease?"نصب در جریان":"مدیریت آماده"):"نیاز به بررسی";$("foreign-agent-status").className="badge "+(f.available?"good":"bad");
+  $("foreign-new-code").disabled=busy||!f.available;$("foreign-test").disabled=busy||!f.available;
+  $("foreign-pair-port").textContent="پورت کانال جفت‌سازی: "+(f.agent_port||"—")+" / TCP · باید از ایران در دسترس باشد.";
+  const peers=(f.paired||[]).filter(p=>!p.revoked);
+  $("foreign-peer-list").replaceChildren(...peers.map(p=>{const row=el("div",undefined,"foreign-peer"),detail=el("div");detail.append(el("strong",p.name),el("code",p.source));const revoke=el("button","لغو مدیریت");revoke.type="button";revoke.disabled=busy;revoke.onclick=async()=>{try{await foreignCall("/api/foreign/revoke",{id:p.id});toast("دسترسی مدیریت و کلید جفت‌سازی لغو شد؛ تانل‌های جاری حفظ می‌شوند.");}catch(e){toast(e.message);}};row.append(detail,revoke);return row;}));
+  if(!peers.length)$("foreign-peer-list").append(el("p","هنوز پنل ایران جفت نشده است.","muted"));
+  $("foreign-targets").replaceChildren(...Object.entries(d.targets||{}).map(([id,t])=>{const row=el("div",undefined,"foreign-peer"),a=el("div");a.append(el("strong",id),el("code",t.target));row.append(a,el("span",t.reachable?"مقصد در دسترس":"مقصد ناموفق","badge "+(t.reachable?"good":"bad")));return row;}));
+  if(!Object.keys(d.targets||{}).length)$("foreign-targets").append(el("p","مقصدی تعریف نشده؛ سرویس TCP را در نقشهٔ پنل ایران اضافه کن.","muted"));
+  $("foreign-probe-note").textContent=(d.telemetry_fresh?"آزمون تازهٔ تانل دریافت شد":"آزمون دوطرفه نامشخص است")+(d.probe_time?" · آخرین دریافت: "+new Date(d.probe_time*1000).toLocaleString("fa-IR"):"");
+  $("foreign-action-history").replaceChildren(...(f.actions||[]).slice(0,4).map(a=>el("p",a.unit+" · "+({start:"شروع",stop:"توقف",restart:"راه‌اندازی مجدد",test:"آزمون مقصد"}[a.action]||a.action)+" · "+({running:"در حال اجرا",succeeded:"موفق",failed:"ناموفق",interrupted:"متوقف‌شده"}[a.status]||a.status)+(a.error?" · "+a.error:""),"field-help")));
+  for(const u of d.units||[]){let view=foreignUnitCards.get(u.unit);if(!view){const card=el("article",undefined,"setup-block foreign-unit"),head=el("div",undefined,"service-header"),badge=el("span",undefined,"badge");head.append(el("code",u.unit),badge);const metrics=el("p",undefined,"muted"),buttons=el("div",undefined,"foreign-service-buttons");const controls=[];for(const [op,text] of [["start","شروع"],["restart","راه‌اندازی مجدد"],["stop","توقف"]]){const b=el("button",text);b.type="button";b.onclick=async()=>{try{await foreignCall("/api/foreign/action",{unit:u.unit,action:op});toast("عملیات سرویس شروع شد؛ نتیجه در همین پنل ثبت می‌شود.");}catch(e){toast(e.message);}};buttons.append(b);controls.push(b);}card.append(head,metrics,buttons);view={card,badge,metrics,controls};foreignUnitCards.set(u.unit,view);$("foreign-units").append(card);}view.badge.textContent=u.active?"روشن":u.state;view.badge.className="badge "+(u.active?"good":"bad");view.metrics.textContent="راه‌اندازی مجدد: "+fa(u.restarts)+" · RAM: "+(u.memory===null?"—":bytes(u.memory));view.controls.forEach(b=>b.disabled=busy||!f.available);}
+  const unitIds=new Set((d.units||[]).map(u=>u.unit));for(const [id,v] of foreignUnitCards)if(!unitIds.has(id)){v.card.remove();foreignUnitCards.delete(id);}
+  $("counters").textContent=d.metrics?"اتصال‌های پذیرفته‌شدهٔ relay: "+fa(d.metrics.accepted)+" · شمارنده‌های همین سرور":"شمارندهٔ relay هنوز در دسترس نیست.";
+  if(!d.metrics)$("traffic-rate").textContent="در انتظار شمارندهٔ واقعی فرآیند";
+}
+async function foreignCall(path,body){if(foreignPending)throw Error("منتظر پایان درخواست قبلی بمان.");foreignPending=true;if(state?.role==="foreign")renderForeign(state);try{const result=await api(path,body);if(result.status==="running"&&state?.foreign)state.foreign.action_busy=true;return result;}finally{foreignPending=false;await refresh();}}
+$("foreign-new-code").onclick=async()=>{try{const c=await foreignCall("/api/foreign/code",{});$("foreign-code-value").value=c.code;$("foreign-code-expiry").textContent="معتبر تا "+new Date(c.expires_at*1000).toLocaleTimeString("fa-IR");toast("کد یک‌بارمصرف ساخته شد؛ آن را در پنل ایران وارد کن.");}catch(e){toast(e.message);}};
+$("foreign-copy-code").onclick=async()=>{try{if(!$("foreign-code-value").value)throw Error();if(navigator.clipboard)await navigator.clipboard.writeText($("foreign-code-value").value);else{$("foreign-code-value").select();if(!document.execCommand("copy"))throw Error();}toast("کد جفت‌سازی کپی شد.");}catch{toast("ابتدا کد بساز؛ می‌توانی آن را از کادر انتخاب و کپی کنی.");}};
+$("foreign-test").onclick=async()=>{try{await foreignCall("/api/foreign/action",{unit:"all",action:"test"});toast("آزمون سلامت و مقصدها شروع شد.");}catch(e){toast(e.message);}};
