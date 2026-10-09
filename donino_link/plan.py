@@ -185,7 +185,7 @@ def paqet_config(role, iran, foreign, port, token, mappings):
     return json.dumps(config,indent=2)+"\n"
 
 
-def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None):
+def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090):
     if not transports or len(set(transports)) != len(transports) or not set(transports) <= set(TRANSPORTS):
         raise ValueError("select unique supported transports")
     if set(transports) & EXPERIMENTAL and not experimental:
@@ -218,7 +218,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         return carrier_base+index
     relay_base=base+1000
     relay_transports=[t for t in transports if t!='browser-wss']
-    iran_ports=[endpoint(s['listen'])[1] for s in services]+[8090]
+    iran_ports=[endpoint(s['listen'])[1] for s in services]+[panel_port]
     # Target port aliases are valid, but the health responder or a public
     # wildcard listener must never conflict with an existing origin listener.
     target_ports={endpoint(s['target'])[1] for s in services}
@@ -348,6 +348,7 @@ WantedBy=multi-user.target
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
+                    'listeners': ([{'protocol':'tcp','port':p} for p in iran_ports] + [{'protocol':'udp','port':carrier_port(i,t)} for i,t in enumerate(transports) if t=='frp-quic']) if role=='iran' else [{'protocol':'tcp','port':p} for p in foreign_ports if p not in target_ports],
                     'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,
              'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss')]+[endpoint(s['listen'])[1] for s in services],

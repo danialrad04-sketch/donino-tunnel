@@ -7,7 +7,7 @@ import ssl
 import time
 from collections import OrderedDict, deque
 from pathlib import Path
-from aiohttp import web
+from aiohttp import web, ClientSession, ClientTimeout, UnixConnector, ClientError
 from .config import endpoint
 
 AUTH = web.RequestKey("auth", object)
@@ -45,6 +45,10 @@ class Panel:
             web.post("/api/logout",self.logout),web.get("/api/session",self.session),
             web.get("/api/status",self.status),web.get("/api/metrics",self.metrics),
             web.post("/api/action",self.action),web.get("/api/export",self.export),
+            web.get('/api/provision/state',self.provision),
+            web.post('/api/provision/profiles',self.provision),
+            web.post('/api/provision/preview',self.provision),
+            web.post('/api/provision/start',self.provision),
         ])
 
     @web.middleware
@@ -164,6 +168,30 @@ class Panel:
         except (ValueError,KeyError,TypeError,AttributeError):
             raise web.HTTPBadRequest(text="invalid action")
         return web.json_response({"ok":True})
+
+    async def provision(self, request):
+        # Fixed local endpoint. Public requests cannot choose socket, command,
+        # identity path, remote script, download URL or arbitrary worker route.
+        from .provision import SOCKET
+        route = request.path.removeprefix('/api/provision')
+        if not SOCKET.exists():
+            if request.method == 'GET':
+                return web.json_response({'available':False,'reason':'سرویس نصب خودکار روی ایران هنوز فعال نشده است.'})
+            return web.json_response({'error':'سرویس نصب خودکار در دسترس نیست.'},status=503)
+        try:
+            body = await request.json() if request.method == 'POST' else None
+            if body is not None and not isinstance(body,dict):
+                raise web.HTTPBadRequest(text='invalid JSON')
+            async with ClientSession(connector=UnixConnector(path=str(SOCKET)),timeout=ClientTimeout(total=90)) as session:
+                async with session.request(request.method,'http://localhost'+route,json=body) as response:
+                    result = await response.json()
+                    if request.method == 'POST' and response.status < 400:
+                        self.gateway.store.event('provision',{'operation':route,'id':result.get('id')})
+                    return web.json_response(result,status=response.status)
+        except (ClientError,asyncio.TimeoutError,OSError):
+            return web.json_response({'error':'ارتباط با سرویس نصب قطع شد؛ وضعیت عملیات را دوباره بررسی کن.'},status=503)
+        except ValueError:
+            raise web.HTTPBadRequest(text='invalid JSON')
 
     async def export(self, request):
         # Observations only, deliberately excludes tokens and configuration secrets.

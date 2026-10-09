@@ -3,6 +3,10 @@ set -Eeuo pipefail
 [[ $(id -u) -eq 0 ]] || exit 1
 current_dir=${1:-$(readlink -f /opt/donino-link/current)}
 [[ "$current_dir" == /opt/donino-link/releases/* && -f "$current_dir/node/install.json" ]] || exit 1
+if [[ "${2:-}" == --if-current && "$(readlink -f /opt/donino-link/current || true)" != "$current_dir" ]]; then
+  echo 'Release is not current; restoration already happened or a later release is active.'
+  exit 0
+fi
 previous_dir=$(cat "$current_dir/previous-release")
 while IFS= read -r service; do
   systemctl stop "$service" || true

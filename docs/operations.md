@@ -60,3 +60,8 @@ Paqet تنها با `--experimental` و IPv4 عمومی واقعی. installer NI
 ## BrowserLink
 
 Debian و حداقل ۲ گیگ RAM برای ایران؛ `chromium` و `nodejs` از مخزن توزیع نصب می‌شوند. بسته‌ها SHA ثابت پروژه ندارند و تابع امنیت/به‌روزرسانی apt هستند. sandbox باید در کرنل و محیط systemd قابل اجرا باشد؛ اگر محیط user namespace یا IPC لازم را ممنوع کند، مسیر ناسالم می‌شود و FRP باقی می‌ماند. هیچ fallback تولیدی به `--no-sandbox` وجود ندارد. به‌روزرسانی browser ممکن است اثر انگشت و عملکرد را تغییر دهد؛ بعد از update، آزمون native اجرا شود.
+
+
+## نصب از پنل ایران
+
+[گردش کار کامل نصب دو node](panel-installer.md)، اتصال با کلید اختصاصی، پیش‌نمایش، journal، آزمون تمام مسیرها و بازگشت release.

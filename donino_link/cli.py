@@ -87,6 +87,9 @@ def main():
     p.add_argument('--node',required=True)
     p=sub.add_parser('renew')
     p.add_argument('--plan',required=True)
+    p=sub.add_parser('control-enable',help='enable the local two-node installation controller (root on Iran)')
+    p.add_argument('--allow-private-peers',action='store_true',help='operator opt-in for a private VPC/LAN SSH peer')
+    sub.add_parser('control-run',help='internal root installation worker')
     p=sub.add_parser('panel-access',help='configure the real admin panel listener')
     p.add_argument('--config',required=True)
     p.add_argument('--listen',required=True)
@@ -96,7 +99,13 @@ def main():
     p.add_argument('--public-host')
     args=parser.parse_args()
     try:
-        if args.command=='plan':
+        if args.command=='control-enable':
+            from .provision import enable_control
+            enable_control(args.allow_private_peers)
+        elif args.command=='control-run':
+            from .provision import serve_control
+            asyncio.run(serve_control())
+        elif args.command=='plan':
             from .plan import make_plan
             services=[]
             for value in args.service:

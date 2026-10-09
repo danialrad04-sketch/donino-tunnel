@@ -64,3 +64,21 @@ jobs:
         with:
           name: panel-ui-results
           path: ui-results/
+  provision-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install .
+      - run: python scripts/test-provision.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: provision-systemd-results
+          path: |
+            provision-results.json
+            provision-iran.log
+            provision-foreign.log
