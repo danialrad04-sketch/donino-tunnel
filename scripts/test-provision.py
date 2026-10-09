@@ -55,7 +55,11 @@ def main():
             for node in ['foreign','iran']:
                 build_payload(plan/node,work/('payload-'+node))
                 execute(node,'bash','/work/payload-'+node+'/scripts/install-node.sh','/work/payload-'+node)
-            public_key=execute('iran','cat','/var/lib/donino-control/identity.pub').strip()
+            for _ in range(30):
+                try:
+                    public_key=execute('iran','cat','/var/lib/donino-control/identity.pub').strip();break
+                except RuntimeError:time.sleep(1)
+            else:raise RuntimeError('controller key initialization failed')
             execute('foreign','python3','-c',"import pathlib,sys;p=pathlib.Path('/root/.ssh');p.mkdir(mode=0o700,exist_ok=True);f=p/'authorized_keys';f.write_text(sys.argv[1]+'\\n');f.chmod(0o600)",public_key)
             pin=execute('foreign','ssh-keygen','-lf','/etc/ssh/ssh_host_ed25519_key.pub').split()[1]
             base='http://'+ips['iran']+':8090'
@@ -71,7 +75,7 @@ def main():
                 except (OSError,AssertionError):time.sleep(1)
             else:raise RuntimeError('panel/controller unavailable')
             p=api('/api/provision/profiles',{'name':'Disposable foreign','host':ips['foreign'],'port':22,'fingerprint':pin})
-            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss'],'experimental':True,'open_ufw':True}
+            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet'],'experimental':True,'open_ufw':True}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
             original_job=job['id'];lost_panel=False
@@ -93,7 +97,7 @@ def main():
                 private=re.sub(r'(?im)^.*(?:token|secret|password|private key).*$','[redacted sensitive line]',private)
                 print('FIXTURE INSTALLER DIAGNOSTICS:\n'+private[-16000:])
             assert job['status']=='succeeded',json.dumps(job)
-            assert len(job['probes'])==5 and all(p['ok'] for p in job['probes'])
+            assert len(job['probes'])==6 and all(p['ok'] for p in job['probes'])
             for node in ['iran','foreign']:
                 added=execute(node,'ufw','show','added');assert 'Donino-control-'+job['id'] in added;assert 'fixture-existing' in added
             report['owned_ufw_ports']=True
@@ -103,7 +107,7 @@ def main():
                 conn.settimeout(30);conn.sendall(data);conn.shutdown(socket.SHUT_WR);result=bytearray()
                 while chunk:=conn.recv(32768):result.extend(chunk)
             assert hashlib.sha256(result).digest()==hashlib.sha256(data).digest()
-            report['results'].append({'installation':'five-carrier complete','payload_bytes_each_direction':len(data),'half_close':True,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            report['results'].append({'installation':'six-carrier complete','payload_bytes_each_direction':len(data),'half_close':True,'all_path_and_origin_probes':True,'authentication_preserved':True})
             # Foreign target unavailable must fail in preparation and preserve the
             # successful installation on BOTH nodes, before activation.
             before={node:execute(node,'readlink','-f','/opt/donino-link/current').strip() for node in ['iran','foreign']}
@@ -118,6 +122,23 @@ def main():
             after={node:execute(node,'readlink','-f','/opt/donino-link/current').strip() for node in ['iran','foreign']}
             assert before==after
             report['results'].append({'unavailable_origin':'fails before activation','previous_releases_preserved':True})
+            blocked={**spec,'transports':['frp-wss'],'carrier_base':24543,'open_ufw':False}
+            p=api('/api/provision/preview',blocked);failed=api('/api/provision/start',{'plan_id':p['id'],'confirm_replace':True})
+            for _ in range(180):
+                try:
+                    row=next(j for j in api('/api/provision/state')['jobs'] if j['id']==failed['id'])
+                    if row['status']!='running':break
+                except urllib.error.HTTPError as error:
+                    if error.code==401:login()
+                    else:raise
+                except OSError:pass
+                time.sleep(2)
+            assert row['status']=='failed' and row['activated']==['foreign','iran'],json.dumps(row)
+            after={node:execute(node,'readlink','-f','/opt/donino-link/current').strip() for node in ['iran','foreign']}
+            assert before==after
+            assert [e['stage'] for e in row['events'] if e['stage'].startswith('rollback') and e['status']=='done']==['rollback-iran','rollback-foreign']
+            login();assert api('/api/provision/state')['available']
+            report['results'].append({'blocked_carrier':'fails after activation','actual_two_node_rollback':True,'panel_and_password_restored':True})
             print(json.dumps(report,ensure_ascii=False))
         finally:
             Path('provision-results.json').write_text(json.dumps(report,indent=2))
