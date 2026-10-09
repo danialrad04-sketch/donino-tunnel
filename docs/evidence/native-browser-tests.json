@@ -1,0 +1,26 @@
+{
+  "gateway_failover_to_real_quic_and_recovery": true,
+  "scope": "Linux amd64 loopback; native Chromium; not an Iran DPI or WAN throughput test",
+  "chromium": "google-chrome",
+  "concurrent_binary_echo": [
+    {
+      "bytes_each_direction": 4194304,
+      "seconds": 1.129,
+      "sha256_match": true
+    },
+    {
+      "bytes_each_direction": 2097152,
+      "seconds": 0.85,
+      "sha256_match": true
+    }
+  ],
+  "health_probe_ms": 7.02,
+  "half_close_delayed_response": true,
+  "unauthorized_wrong_origin_unknown_target_rejected": true,
+  "browser_crash_closes_stream_and_recovers": true,
+  "max_streams": 32,
+  "flow_window_bytes_per_direction": 524288,
+  "commit": "7e9a2a7d4a42a298b918c8562433cc7540168557",
+  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37946624898",
+  "browser_version": "Google Chrome 154.0.8037.97"
+}

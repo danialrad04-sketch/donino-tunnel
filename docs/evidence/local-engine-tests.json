@@ -1,24 +1,32 @@
 {
   "mtls_front_requires_client_certificate": true,
   "frp-wss": {
-    "probe_ms": 4.243,
+    "probe_ms": 2.485,
     "bytes_echoed": 2097152,
-    "binary_payload_sha256_match": true
+    "binary_payload_sha256_match": true,
+    "half_close_preserved": true,
+    "response_after_upload_eof": true
   },
   "frp-quic": {
-    "probe_ms": 2.103,
+    "probe_ms": 2.096,
     "bytes_echoed": 2097152,
-    "binary_payload_sha256_match": true
+    "binary_payload_sha256_match": true,
+    "half_close_preserved": true,
+    "response_after_upload_eof": true
   },
   "backpack-wss": {
-    "probe_ms": 4.324,
+    "probe_ms": 5.86,
     "bytes_echoed": 2097152,
-    "binary_payload_sha256_match": true
+    "binary_payload_sha256_match": true,
+    "half_close_preserved": true,
+    "response_after_upload_eof": true
   },
   "backhaul-wss": {
-    "probe_ms": 1.45,
+    "probe_ms": 4.403,
     "bytes_echoed": 2097152,
-    "binary_payload_sha256_match": true
+    "binary_payload_sha256_match": true,
+    "half_close_preserved": true,
+    "response_after_upload_eof": true
   },
   "failover": {
     "from": "frp-wss",
@@ -26,6 +34,6 @@
     "bytes_echoed": 524288,
     "pass": true
   },
-  "elapsed_seconds": 3.0,
+  "elapsed_seconds": 4.0,
   "scope": "loopback Linux, amd64; no Iran route, raw packets or production load test"
 }
