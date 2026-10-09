@@ -1,0 +1,302 @@
+{
+  "commit": "2e2bedfd12e5e11e248a306d537fe197f4898366",
+  "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37996289668",
+  "unit_tests": 71,
+  "all_seven_ci_jobs": "success",
+  "ci_jobs": [
+    {
+      "id": 114043104893,
+      "name": "browser-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043104953,
+      "name": "panel-ui",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043104968,
+      "name": "provision-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043105001,
+      "name": "test (3.11)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043105060,
+      "name": "transport-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043105130,
+      "name": "test (3.12)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114043105224,
+      "name": "test (3.13)",
+      "conclusion": "success"
+    }
+  ],
+  "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
+  "results": [
+    {
+      "installation": "six-carrier complete",
+      "payloads": [
+        {
+          "carrier": "frp-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "frp-quic",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backpack-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backhaul-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "browser-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "paqet",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        }
+      ],
+      "all_path_and_origin_probes": true,
+      "authentication_preserved": true
+    },
+    {
+      "unavailable_origin": "fails before activation",
+      "previous_releases_preserved": true
+    },
+    {
+      "blocked_carrier": "fails after activation",
+      "actual_two_node_rollback": true,
+      "panel_and_password_restored": true
+    }
+  ],
+  "ci_base_image_source": "docker.io/library/debian:12",
+  "standalone_single_file_and_repository_entrypoints": true,
+  "standalone_panels_and_automatic_ssh_pairing": true,
+  "unrelated_operator_ssh_key_preserved": true,
+  "installation_lease_blocks_competing_actions": true,
+  "job": {
+    "id": "2930d7b28764f49f4a5542453473be8d",
+    "plan_id": "7c70ae9644189d3fe7555c7cb55b0823",
+    "status": "succeeded",
+    "stage": "complete",
+    "created": 1791583024.7944555,
+    "updated": 1791583079.1624084,
+    "events": [
+      {
+        "time": 1791583024.7979326,
+        "stage": "preflight",
+        "status": "running",
+        "message": "Checking both servers before making changes"
+      },
+      {
+        "time": 1791583025.0416734,
+        "stage": "preflight",
+        "status": "done",
+        "message": "SSH pin and root access verified"
+      },
+      {
+        "time": 1791583025.0486643,
+        "stage": "prepare-foreign",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791583037.9281654,
+        "stage": "prepare-foreign",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791583037.9290752,
+        "stage": "prepare-iran",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791583069.1558077,
+        "stage": "prepare-iran",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791583069.1621757,
+        "stage": "activate-foreign",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791583074.2033522,
+        "stage": "activate-foreign",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791583074.2115467,
+        "stage": "activate-iran",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791583079.104995,
+        "stage": "activate-iran",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791583079.105833,
+        "stage": "verify",
+        "status": "running",
+        "message": "Testing every selected carrier with signed round-trip probes"
+      },
+      {
+        "time": 1791583079.1614685,
+        "stage": "verify",
+        "status": "done",
+        "message": "All selected paths and destination TCP services passed"
+      },
+      {
+        "time": 1791583079.1624084,
+        "stage": "complete",
+        "status": "done",
+        "message": "Installation complete; sign in again after the panel restart"
+      }
+    ],
+    "prepared": [
+      "foreign",
+      "iran"
+    ],
+    "activated": [
+      "foreign",
+      "iran"
+    ],
+    "activating": null,
+    "probes": [
+      {
+        "path": "frp-wss",
+        "ok": true,
+        "latency_ms": 3.44,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "frp-quic",
+        "ok": true,
+        "latency_ms": 2.72,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backpack-wss",
+        "ok": true,
+        "latency_ms": 6.26,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backhaul-wss",
+        "ok": true,
+        "latency_ms": 7.13,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "browser-wss",
+        "ok": true,
+        "latency_ms": 9.57,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "paqet",
+        "ok": true,
+        "latency_ms": 22.83,
+        "services": {
+          "app": true
+        }
+      }
+    ],
+    "release": "/opt/donino-link/releases/control-2930d7b28764f49f4a5542453473be8d"
+  },
+  "panel_restarted": true,
+  "owned_ufw_ports": true,
+  "adaptive_real_netem": {
+    "delayed_carrier": "frp-wss",
+    "added_outbound_delay_ms": 150,
+    "delayed_carrier_still_healthy": true,
+    "selected": "frp-quic",
+    "delayed_probe_ms": 104.09282254686858
+  },
+  "adaptive_actual_payload": {
+    "payload_bytes_each_direction": 1048576,
+    "sha256_match": true,
+    "half_close": true,
+    "real_counters_match": true
+  },
+  "foreign_signed_health_and_local_traffic_counters": true,
+  "foreign_traffic_counters": {
+    "bytes_up": 12582912,
+    "bytes_down": 12582912
+  },
+  "real_role_ui": true,
+  "pairing_revocation_removes_only_owned_ssh_key": true,
+  "revoked_peer_health_becomes_unknown": true,
+  "native_role_ui": {
+    "real_role_panels": true,
+    "adaptive_toggle_and_reload_persistence": true,
+    "foreign_actual_health_test": true,
+    "foreign_code_generation": true,
+    "foreign_stop_start_actual_quic": true,
+    "prevent_panel_self_stop": true,
+    "role_specific_controls": true,
+    "automatic_pairing_form": true,
+    "mobile_overflow": false,
+    "js_errors": []
+  },
+  "revoked_health_ui": {
+    "revoked_peer_no_fresh_health": true,
+    "unknown_paths_render": true,
+    "js_errors": []
+  },
+  "standalone_installer": {
+    "sha256": "ead40eb57e8ad1b88031acca73ee1902fc5bba23895d9df5a7fc5b7079280b6b",
+    "runtime_sha256": "625cde4d586d54f25ced2d701575a093e5ccb8caa0645bc4c3c3f6d9d9b19e01",
+    "embedded_public_source_files": 37
+  },
+  "limits": {
+    "wan_benchmark": false,
+    "dpi_resistance_tested": false,
+    "new_wire_protocol": false,
+    "global_novelty_claim": false
+  }
+}
