@@ -141,7 +141,7 @@ function renderSetup(data){
   $("setup-public-key").value=data.public_key;
   if(data.iran_address&&!$("setup-iran").value)$("setup-iran").value=data.iran_address;
   const select=$("setup-profile"),selected=select.value,ids=JSON.stringify(data.profiles.map(p=>[p.id,p.name]));
-  if(select.dataset.profiles!==ids){select.replaceChildren(el("option",data.profiles.length?"انتخاب سرور خارج":"ابتدا اتصال خارج را ثبت کن"));select.firstChild.value="";data.profiles.forEach(p=>{const opt=el("option",p.name+" · "+p.host);opt.value=p.id;select.append(opt);});select.value=selected;select.dataset.profiles=ids;}
+  if(select.dataset.profiles!==ids){select.replaceChildren(el("option",data.profiles.length?"انتخاب سرور خارج":"ابتدا اتصال خارج را ثبت کن"));select.firstChild.value="";data.profiles.forEach(p=>{const opt=el("option",p.name+" · "+p.host);opt.value=p.id;select.append(opt);});select.value=selected||(data.profiles.length===1?data.profiles[0].id:"");select.dataset.profiles=ids;}
   if(!$("setup-transports").children.length){data.transports.forEach(t=>{const label=el("label"),input=el("input");input.type="checkbox";input.value=t.id;input.checked=["frp-wss","frp-quic"].includes(t.id);input.dataset.experimental=String(t.experimental);label.append(input,el("span",t.id+(t.experimental?" · آزمایشی":"")));$("setup-transports").append(label);});}
   $("setup-controls").setAttribute("aria-busy",String(!!data.busy));
   $("connection-save").disabled=!!data.busy||setupRequest;$("setup-preview").disabled=!!data.busy||setupRequest;$("setup-start").disabled=!!data.busy||setupRequest||!setupPlan||!$("setup-confirm").checked;
@@ -169,6 +169,9 @@ function configureRole(foreign){
   $("auto").hidden=foreign;$("pause").hidden=foreign;
   document.querySelector("header h1").firstChild.textContent=foreign?"مرکز مدیریت خارج":"مرکز فرمان ارتباط";
   document.querySelector("header p").textContent=foreign?"سرور خروج، سرویس مقصد و اتصال تأییدشده به ایران.":"هر مسیر، هر اتصال؛ یک تصویر روشن.";
+  document.querySelector("#overview .eyebrow").textContent=foreign?"پایش ارتباط دو سرور":"مسیر انتخاب‌شده برای اتصال‌های جدید";
+  document.querySelectorAll(".kpi-title span")[2].textContent=foreign?"تأخیر نخستین مسیر سالم":"تأخیر مسیر انتخاب‌شده";
+  document.querySelector("#paths .section-heading p").textContent=foreign?"سلامت حامل، وضعیت محلی و تازگی آزمون از ایران.":"انتخاب مستقل هر مسیر، بر اساس سلامت و اولویت.";
   if(foreign){document.querySelector("#guide h3").textContent="سه بررسی، سه نتیجهٔ مستقل";const ps=document.querySelectorAll("#guide p");ps[0].textContent="روشن بودن systemd فقط وضعیت سرویس محلی است. دسترسی TCP مقصد جدا سنجیده می‌شود. سلامت تانل به آزمون تازه و امضاشده از ایران نیاز دارد؛ شاهد قدیمی یا غایب نامشخص نمایش داده می‌شود.";ps[1].textContent="ترافیک و اتصال‌های فعال از relayهای همین سرور خوانده می‌شوند؛ شمارنده‌ها از شروع فرآیندهای فعلی‌اند. انتخاب مسیر و نصب کامل دو سرور در پنل ایران انجام می‌شود.";}
 }
 function renderForeign(d){

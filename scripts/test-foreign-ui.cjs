@@ -24,6 +24,14 @@ async function main(){
     }
     await outside.locator('#foreign-test').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-action-history').textContent.includes('موفق'),{},{timeout:45000});
+    const quic=outside.locator('.foreign-unit').filter({hasText:'donino-link-frp-quic.service'});
+    await quic.getByRole('button',{name:'توقف',exact:true}).click();
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.foreign-unit')].find(e=>e.textContent.includes('donino-link-frp-quic.service'))?.querySelector('.badge').textContent==='inactive',{},{timeout:45000});
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='frp-quic')?.querySelector('.path-status').textContent!=='سالم');
+    await quic.getByRole('button',{name:'شروع',exact:true}).click();
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===6&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
+    const panelUnit=outside.locator('.foreign-unit').filter({hasText:/donino-link\.service/});
+    if(!await panelUnit.getByRole('button',{name:'توقف',exact:true}).isDisabled())throw Error('panel must not stop itself');
     await outside.locator('#foreign-new-code').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-code-value').value.startsWith('donino1.'));
     // Do not publish a still-valid fixture pairing code in screenshots/logs.
@@ -32,10 +40,12 @@ async function main(){
     await outside.screenshot({path:'ui-role-results/foreign-desktop.png',fullPage:true});
     await outside.locator('#theme').click();
     await outside.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+    await outside.waitForFunction(()=>getComputedStyle(document.querySelector('#refresh')).backgroundColor==='rgb(24, 32, 51)');
     await outside.screenshot({path:'ui-role-results/foreign-dark.png',fullPage:true});
     await outside.setViewportSize({width:390,height:844});
     await outside.locator('#theme').click();
     await outside.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+    await outside.waitForFunction(()=>getComputedStyle(document.querySelector('#refresh')).backgroundColor==='rgb(255, 255, 255)');
     await outside.screenshot({path:'ui-role-results/foreign-mobile.png',fullPage:true});
     const foreignOverflow=await outside.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     const iran=await browser.newPage({viewport:{width:1440,height:1000}});iran.on('pageerror',e=>errors.push(e.message));
@@ -49,7 +59,7 @@ async function main(){
     await iran.locator('#setup').screenshot({path:'ui-role-results/iran-setup-mobile.png'});
     const iranOverflow=await iran.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     if(errors.length||foreignOverflow||iranOverflow)throw Error(JSON.stringify({errors,foreignOverflow,iranOverflow}));
-    console.log(JSON.stringify({real_role_panels:true,foreign_actual_health_test:true,foreign_code_generation:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
+    console.log(JSON.stringify({real_role_panels:true,foreign_actual_health_test:true,foreign_code_generation:true,foreign_stop_start_actual_quic:true,prevent_panel_self_stop:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
     if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['foreign-desktop','foreign-dark','foreign-mobile','iran-setup','iran-setup-mobile'])console.log('DONINO_ROLE_SCREENSHOT_'+name+':'+fs.readFileSync('ui-role-results/'+name+'.png').toString('base64'));
   }finally{await browser.close();}
 }
