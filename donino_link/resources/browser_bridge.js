@@ -33,9 +33,11 @@ async function initialize(config) {
   }
   chrome=spawn(config.chromium||'/usr/bin/chromium',flags,{stdio:['ignore','ignore','pipe','pipe','pipe']});
   chrome.on('error',()=>shutdown(1));
-  chrome.on('exit',()=>shutdown(1));
-  // Chromium diagnostics contain no tokens; avoid noisy platform warnings.
-  chrome.stderr.on('data',()=>{});
+  let startupDiagnostics='';
+  chrome.on('exit',()=>{if(!session&&startupDiagnostics)process.stderr.write('Chromium startup: '+startupDiagnostics+'\n');shutdown(1);});
+  // Collect only bounded pre-session launch diagnostics, before credentials or
+  // a target page enter the browser. Normal platform warnings stay quiet.
+  chrome.stderr.on('data',chunk=>{if(!session)startupDiagnostics=(startupDiagnostics+chunk.toString()).slice(-4096);});
   chrome.stdio[3].on('error',()=>shutdown(1));
   chrome.stdio[4].on('error',()=>shutdown(1));
   chrome.stdio[4].on('data',chunk=>{

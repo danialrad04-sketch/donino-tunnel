@@ -71,12 +71,16 @@ async function main(){
     await page.locator('#setup-details summary').first().click();
 
     await page.setViewportSize({width:390,height:844});
+    await page.locator('#setup-details summary').first().click();
+    const setupMobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+    await page.locator('#setup').screenshot({path:'ui-results/setup-mobile.png'});
+    await page.locator('#setup-details summary').first().click();
     await page.screenshot({path:'ui-results/mobile.png',fullPage:true});
     const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     await page.locator('#mobile-logout').click();await page.locator('#login').waitFor({state:'visible'});
-    if(errors.length||desktopOverflow||mobileOverflow)throw Error(JSON.stringify({errors,desktopOverflow,mobileOverflow}));
-    console.log(JSON.stringify({login:true,pause_resume:true,prefer:true,mobile_logout:true,dark_light_theme_persists:true,manual_refresh:true,installer_form_fixture:true,review_required:true,job_progress:true,js_errors:errors,horizontal_overflow:false}));
-    if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['desktop','mobile','dark','login','setup'])console.log('DONINO_SCREENSHOT_'+name+':'+fs.readFileSync('ui-results/'+name+'.png').toString('base64'));
+    if(errors.length||desktopOverflow||mobileOverflow||setupMobileOverflow)throw Error(JSON.stringify({errors,desktopOverflow,mobileOverflow,setupMobileOverflow}));
+    console.log(JSON.stringify({login:true,pause_resume:true,prefer:true,mobile_logout:true,dark_light_theme_persists:true,manual_refresh:true,installer_form_fixture:true,review_required:true,job_progress:true,installer_mobile_overflow:false,js_errors:errors,horizontal_overflow:false}));
+    if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['desktop','mobile','dark','login','setup','setup-mobile'])console.log('DONINO_SCREENSHOT_'+name+':'+fs.readFileSync('ui-results/'+name+'.png').toString('base64'));
   }finally{
     if(browser)await browser.close();
     child.kill('SIGTERM');

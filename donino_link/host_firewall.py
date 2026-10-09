@@ -18,7 +18,9 @@ def ports_spec(ports):
     values=[]
     for protocol in ['tcp','udp']:
         if not isinstance(ports[protocol],list) or any(isinstance(p,bool) or not isinstance(p,int) or not 1<=p<=65535 for p in ports[protocol]): raise ValueError('invalid firewall port')
-        if ports[protocol]:values.append(','.join(str(p) for p in sorted(set(ports[protocol])))+'/'+protocol)
+        ordered=sorted(set(ports[protocol]))
+        for start in range(0,len(ordered),15):
+            values.append(','.join(str(p) for p in ordered[start:start+15])+'/'+protocol)
     return '|'.join(values)
 
 

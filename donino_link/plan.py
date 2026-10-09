@@ -202,7 +202,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         raise ValueError("use between 1 and 40 TCP services")
     ids=set()
     for service in services:
-        if service['id'] in ids or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}",service['id']):
+        if service['id']=='health' or service['id'] in ids or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}",service['id']):
             raise ValueError("invalid/duplicate service name")
         ids.add(service['id'])
         endpoint(service['listen'])
@@ -306,6 +306,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 text=text.replace('AmbientCapabilities=CAP_NET_BIND_SERVICE','AmbientCapabilities=')
                 text=text.replace('CapabilityBoundingSet=CAP_NET_BIND_SERVICE','CapabilityBoundingSet=')
                 text=text.replace('MemoryMax=768M','MemoryMax=1536M')
+                text=text.replace('RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX','RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK')
             if t=='paqet' and role=='foreign':
                 text=text.replace('After=network-online.target','After=network-online.target donino-link-raw.service\nRequires=donino-link-raw.service')
                 raw=f'''[Unit]

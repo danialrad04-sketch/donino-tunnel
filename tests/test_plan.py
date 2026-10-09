@@ -50,6 +50,11 @@ class PlanTests(unittest.TestCase):
         unit=(self.plan/'iran/units/donino-link-frp-wss-front.service').read_text()
         self.assertIn('--ca /etc/donino-link/current/certs/ca.crt',unit)
 
+    def test_health_service_name_is_reserved_for_authenticated_probe(self):
+        with self.assertRaises(ValueError):
+            make_plan(self.root/'reserved-health','192.0.2.10','198.51.100.20',[{'id':'health','listen':'0.0.0.0:443','target':'127.0.0.1:8443'}],['frp-wss'],'private-test-password')
+        self.assertFalse((self.root/'reserved-health').exists())
+
     def test_experimental_is_explicit(self):
         with self.assertRaises(ValueError):
             make_plan(self.root/'forbidden','192.0.2.10','198.51.100.20',self.services,['paqet'],'private-test-password')

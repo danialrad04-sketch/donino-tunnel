@@ -158,6 +158,7 @@ class Coordinator:
                 if live_config['health_key'] != expected['health_key'] or [p['id'] for p in live_config['paths']] != summary['transports']:
                     raise RuntimeError('Live configuration changed during installation; stopping verification')
                 rows = asyncio.run(doctor(live_config))
+                job['probes'] = rows; w.save_job(job)
                 if len(rows) == len(summary['transports']) and all(row['ok'] and all(row.get('services', {}).values()) for row in rows):
                     break
                 time.sleep(2)
