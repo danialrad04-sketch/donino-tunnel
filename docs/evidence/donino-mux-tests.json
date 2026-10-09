@@ -1,0 +1,326 @@
+{
+  "commit": "49ba940dd88637c824422df4dfedbb56347eef95",
+  "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/38000048382",
+  "unit_tests": 89,
+  "python_versions": [
+    "3.11",
+    "3.12",
+    "3.13"
+  ],
+  "protocol_tests": 14,
+  "protocol": "donino-mux.v1",
+  "security_design": "TLS 1.3 minimum, private CA, mutual authentication, distinct Iran mux client key; named loopback targets",
+  "installer_sha256": "ed121b988900765adaf1e0718e1661f3a78deec0f71738dd5349b726d71fe841",
+  "mux_source_sha256": "72c231c32843540fd7feda077172cc01f906b8adbfacb05ef603f04d4760c5b5",
+  "local_test_summary": [
+    "----------------------------------------------------------------------",
+    "Ran 89 tests in 34.677s",
+    "",
+    "OK"
+  ],
+  "embedded_runtime_sha256": "d7b9d7a899bd4670eab7712f6c636c1fb722f21e32e892f7f98a99eb8700dff6",
+  "embedded_runtime_files": 38,
+  "limitations": [
+    "Private Linux amd64 fixture, not Iran WAN",
+    "No DPI indistinguishability or global novelty proof",
+    "No live-flow migration, retransmission across sessions or UDP entry",
+    "No WAN speed or 24-hour soak benchmark"
+  ],
+  "all_seven_ci_jobs": "success",
+  "ci_jobs": [
+    {
+      "id": 114055643315,
+      "name": "provision-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643502,
+      "name": "transport-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643514,
+      "name": "test (3.13)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643531,
+      "name": "test (3.12)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643616,
+      "name": "test (3.11)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643620,
+      "name": "browser-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114055643792,
+      "name": "panel-ui",
+      "conclusion": "success"
+    }
+  ],
+  "unit_ci_summary": [
+    "2026-10-09T22:36:27.0285301Z Ran 89 tests in 39.025s",
+    "2026-10-09T22:36:27.0285999Z OK"
+  ],
+  "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
+  "results": [
+    {
+      "installation": "seven-carrier complete",
+      "payloads": [
+        {
+          "carrier": "frp-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "frp-quic",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backpack-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backhaul-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "browser-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "paqet",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "donino-mux",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        }
+      ],
+      "all_path_and_origin_probes": true,
+      "authentication_preserved": true
+    },
+    {
+      "unavailable_origin": "fails before activation",
+      "previous_releases_preserved": true
+    },
+    {
+      "blocked_carrier": "fails after activation",
+      "actual_two_node_rollback": true,
+      "panel_and_password_restored": true
+    }
+  ],
+  "ci_base_image_source": "docker.io/library/debian:12",
+  "standalone_single_file_and_repository_entrypoints": true,
+  "standalone_panels_and_automatic_ssh_pairing": true,
+  "unrelated_operator_ssh_key_preserved": true,
+  "installation_lease_blocks_competing_actions": true,
+  "job": {
+    "id": "5a2f9add95c2950602abd2d2aab3d2f9",
+    "plan_id": "1818e626b96999af7f1653f027ffee3d",
+    "status": "succeeded",
+    "stage": "complete",
+    "created": 1791585424.5502367,
+    "updated": 1791585469.7791538,
+    "events": [
+      {
+        "time": 1791585424.5528872,
+        "stage": "preflight",
+        "status": "running",
+        "message": "Checking both servers before making changes"
+      },
+      {
+        "time": 1791585424.7491524,
+        "stage": "preflight",
+        "status": "done",
+        "message": "SSH pin and root access verified"
+      },
+      {
+        "time": 1791585424.754067,
+        "stage": "prepare-foreign",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791585433.2453487,
+        "stage": "prepare-foreign",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791585433.2462327,
+        "stage": "prepare-iran",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791585459.3570974,
+        "stage": "prepare-iran",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791585459.3654773,
+        "stage": "activate-foreign",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791585463.6060746,
+        "stage": "activate-foreign",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791585463.6123056,
+        "stage": "activate-iran",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791585467.6597087,
+        "stage": "activate-iran",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791585467.660525,
+        "stage": "verify",
+        "status": "running",
+        "message": "Testing every selected carrier with signed round-trip probes"
+      },
+      {
+        "time": 1791585469.7782607,
+        "stage": "verify",
+        "status": "done",
+        "message": "All selected paths and destination TCP services passed"
+      },
+      {
+        "time": 1791585469.7791538,
+        "stage": "complete",
+        "status": "done",
+        "message": "Installation complete; sign in again after the panel restart"
+      }
+    ],
+    "prepared": [
+      "foreign",
+      "iran"
+    ],
+    "activated": [
+      "foreign",
+      "iran"
+    ],
+    "activating": null,
+    "probes": [
+      {
+        "path": "frp-wss",
+        "ok": true,
+        "latency_ms": 2.44,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "frp-quic",
+        "ok": true,
+        "latency_ms": 1.74,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backpack-wss",
+        "ok": true,
+        "latency_ms": 1.16,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backhaul-wss",
+        "ok": true,
+        "latency_ms": 2.15,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "browser-wss",
+        "ok": true,
+        "latency_ms": 10.04,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "paqet",
+        "ok": true,
+        "latency_ms": 28.67,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "donino-mux",
+        "ok": true,
+        "latency_ms": 2.22,
+        "services": {
+          "app": true
+        }
+      }
+    ],
+    "release": "/opt/donino-link/releases/control-5a2f9add95c2950602abd2d2aab3d2f9"
+  },
+  "panel_restarted": true,
+  "owned_ufw_ports": true,
+  "mux_concurrent_payloads": {
+    "flows": 8,
+    "bytes_each_direction_per_flow": 1048576,
+    "sha256_match": true,
+    "half_close": true,
+    "real_counters_match": true
+  },
+  "adaptive_real_netem": {
+    "delayed_carrier": "frp-wss",
+    "added_outbound_delay_ms": 150,
+    "delayed_carrier_still_healthy": true,
+    "selected": "backpack-wss",
+    "delayed_probe_ms": 111.17601905444317
+  },
+  "adaptive_actual_payload": {
+    "payload_bytes_each_direction": 1048576,
+    "sha256_match": true,
+    "half_close": true,
+    "real_counters_match": true
+  },
+  "foreign_signed_health_and_local_traffic_counters": true,
+  "foreign_traffic_counters": {
+    "bytes_up": 23068672,
+    "bytes_down": 23068672
+  },
+  "real_role_ui": true,
+  "pairing_revocation_removes_only_owned_ssh_key": true,
+  "revoked_peer_health_becomes_unknown": true,
+  "real_role_ui_logs": [
+    "2026-10-09T22:40:08.4236444Z {\"real_role_panels\":true,\"adaptive_toggle_and_reload_persistence\":true,\"foreign_actual_health_test\":true,\"foreign_code_generation\":true,\"foreign_stop_start_actual_quic\":true,\"prevent_panel_self_stop\":true,\"role_specific_controls\":true,\"automatic_pairing_form\":true,\"mobile_overflow\":false,\"js_errors\":[]}"
+  ]
+}
