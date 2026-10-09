@@ -1,8 +1,45 @@
 {
-  "commit": "43d654b16a0bc814b062588b6f9bbe4a835296d4",
-  "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37966502624",
-  "unit_tests": 61,
+  "commit": "14ad19c387b0104d45293ab4e0dee6edbd55f11c",
+  "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37994055038",
+  "unit_tests": 62,
   "all_seven_ci_jobs": "success",
+  "ci_jobs": [
+    {
+      "id": 114035398247,
+      "name": "browser-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398439,
+      "name": "test (3.11)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398470,
+      "name": "panel-ui",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398519,
+      "name": "test (3.13)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398530,
+      "name": "test (3.12)",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398547,
+      "name": "provision-integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 114035398663,
+      "name": "transport-integration",
+      "conclusion": "success"
+    }
+  ],
   "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
   "results": [
     {
@@ -58,91 +95,93 @@
       "panel_and_password_restored": true
     }
   ],
+  "ci_base_image_source": "mirror.gcr.io/library/debian:12 (Docker Hub rate-limit/auth-timeout fallback)",
+  "standalone_single_file_and_repository_entrypoints": true,
   "standalone_panels_and_automatic_ssh_pairing": true,
   "unrelated_operator_ssh_key_preserved": true,
   "installation_lease_blocks_competing_actions": true,
   "job": {
-    "id": "1d60986d525419832b89925e90587d92",
-    "plan_id": "a6c892138f588fa6dca80501c4b41c3e",
+    "id": "74b8a26f013df7887ade5caba22a165f",
+    "plan_id": "63b11b5b338233ea02dadce96b2638a8",
     "status": "succeeded",
     "stage": "complete",
-    "created": 1791567012.1488528,
-    "updated": 1791567066.9242039,
+    "created": 1791581693.5740874,
+    "updated": 1791581749.2641876,
     "events": [
       {
-        "time": 1791567012.15469,
+        "time": 1791581693.5774558,
         "stage": "preflight",
         "status": "running",
         "message": "Checking both servers before making changes"
       },
       {
-        "time": 1791567012.385936,
+        "time": 1791581693.7945998,
         "stage": "preflight",
         "status": "done",
         "message": "SSH pin and root access verified"
       },
       {
-        "time": 1791567012.3926237,
+        "time": 1791581693.8000717,
         "stage": "prepare-foreign",
         "status": "running",
         "message": "Preparing prerequisites and verified engine binaries"
       },
       {
-        "time": 1791567025.3080125,
+        "time": 1791581705.3190975,
         "stage": "prepare-foreign",
         "status": "done",
         "message": "Prepared; active installation has not switched"
       },
       {
-        "time": 1791567025.3095355,
+        "time": 1791581705.3203359,
         "stage": "prepare-iran",
         "status": "running",
         "message": "Preparing prerequisites and verified engine binaries"
       },
       {
-        "time": 1791567056.4771187,
+        "time": 1791581739.9987786,
         "stage": "prepare-iran",
         "status": "done",
         "message": "Prepared; active installation has not switched"
       },
       {
-        "time": 1791567056.485415,
+        "time": 1791581740.0050538,
         "stage": "activate-foreign",
         "status": "running",
         "message": "Activating staged units and configuration"
       },
       {
-        "time": 1791567061.6311483,
+        "time": 1791581744.6291273,
         "stage": "activate-foreign",
         "status": "done",
         "message": "Services started"
       },
       {
-        "time": 1791567061.6400282,
+        "time": 1791581744.635267,
         "stage": "activate-iran",
         "status": "running",
         "message": "Activating staged units and configuration"
       },
       {
-        "time": 1791567066.8472726,
+        "time": 1791581749.173759,
         "stage": "activate-iran",
         "status": "done",
         "message": "Services started"
       },
       {
-        "time": 1791567066.848623,
+        "time": 1791581749.1748433,
         "stage": "verify",
         "status": "running",
         "message": "Testing every selected carrier with signed round-trip probes"
       },
       {
-        "time": 1791567066.9227705,
+        "time": 1791581749.2632663,
         "stage": "verify",
         "status": "done",
         "message": "All selected paths and destination TCP services passed"
       },
       {
-        "time": 1791567066.9242039,
+        "time": 1791581749.2641876,
         "stage": "complete",
         "status": "done",
         "message": "Installation complete; sign in again after the panel restart"
@@ -161,7 +200,7 @@
       {
         "path": "frp-wss",
         "ok": true,
-        "latency_ms": 3.18,
+        "latency_ms": 2.74,
         "services": {
           "app": true
         }
@@ -169,7 +208,7 @@
       {
         "path": "frp-quic",
         "ok": true,
-        "latency_ms": 2.79,
+        "latency_ms": 1.96,
         "services": {
           "app": true
         }
@@ -177,7 +216,7 @@
       {
         "path": "backpack-wss",
         "ok": true,
-        "latency_ms": 6.52,
+        "latency_ms": 5.43,
         "services": {
           "app": true
         }
@@ -185,7 +224,7 @@
       {
         "path": "backhaul-wss",
         "ok": true,
-        "latency_ms": 6.98,
+        "latency_ms": 5.17,
         "services": {
           "app": true
         }
@@ -193,7 +232,7 @@
       {
         "path": "browser-wss",
         "ok": true,
-        "latency_ms": 11.37,
+        "latency_ms": 9.3,
         "services": {
           "app": true
         }
@@ -201,32 +240,49 @@
       {
         "path": "paqet",
         "ok": true,
-        "latency_ms": 39.17,
+        "latency_ms": 60.42,
         "services": {
           "app": true
         }
       }
     ],
-    "release": "/opt/donino-link/releases/control-1d60986d525419832b89925e90587d92"
+    "release": "/opt/donino-link/releases/control-74b8a26f013df7887ade5caba22a165f"
   },
   "panel_restarted": true,
   "owned_ufw_ports": true,
   "foreign_signed_health_and_local_traffic_counters": true,
+  "foreign_traffic_counters": {
+    "bytes_up": 12582912,
+    "bytes_down": 12582912
+  },
   "real_role_ui": true,
   "pairing_revocation_removes_only_owned_ssh_key": true,
   "revoked_peer_health_becomes_unknown": true,
   "native_role_ui": {
     "real_role_panels": true,
-    "actual_foreign_stop_start_quic": true,
-    "panel_self_stop_prevented": true,
-    "foreign_health_test": true,
-    "code_generation": true,
+    "foreign_actual_health_test": true,
+    "foreign_code_generation": true,
+    "foreign_stop_start_actual_quic": true,
+    "prevent_panel_self_stop": true,
+    "role_specific_controls": true,
     "automatic_pairing_form": true,
-    "no_api_mocks": true,
-    "unknown_after_revocation": true,
-    "desktop": "1440x1000",
-    "mobile": "390x844",
-    "horizontal_overflow": false,
-    "javascript_errors": []
+    "mobile_overflow": false,
+    "js_errors": []
+  },
+  "revoked_health_ui": {
+    "revoked_peer_no_fresh_health": true,
+    "unknown_paths_render": true,
+    "js_errors": []
+  },
+  "standalone_installer": {
+    "file": "install-donino.sh",
+    "sha256": "d84fdd579888ed27e11d1526e65ffb11f65a420fdac5d2bdad0289bd58d918dd",
+    "runtime_sha256": "760f54da6cb4cb93e13b24dc3f583c99eda4393e52e159f4da21c7a6250461fe",
+    "embedded_public_source_files": 36
+  },
+  "screenshots": {
+    "commit": "43d654b16a0bc814b062588b6f9bbe4a835296d4",
+    "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37966502624",
+    "note": "Previously successful native role UI run; frontend assets unchanged. Current source and standalone installer retested in the workflow above."
   }
 }
