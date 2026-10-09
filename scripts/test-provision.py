@@ -3,6 +3,7 @@
 Run on an isolated Linux CI runner with Docker, never on the user's VPS.
 """
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import http.cookiejar
 import json
 import os
@@ -99,7 +100,7 @@ def main():
             else:raise AssertionError('pairing code replay succeeded')
             report['standalone_panels_and_automatic_ssh_pairing']=True
             report['unrelated_operator_ssh_key_preserved']=True
-            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet'],'experimental':True,'open_ufw':True}
+            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet','donino-mux'],'experimental':True,'open_ufw':True}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
             original_job=job['id'];lost_panel=False
@@ -130,7 +131,7 @@ def main():
                 private=re.sub(r'(?im)^.*(?:token|secret|password|private key).*$','[redacted sensitive line]',private)
                 print('FIXTURE INSTALLER DIAGNOSTICS:\n'+private[-16000:])
             assert job['status']=='succeeded',json.dumps(job)
-            assert len(job['probes'])==6 and all(p['ok'] for p in job['probes'])
+            assert len(job['probes'])==7 and all(p['ok'] for p in job['probes'])
             for node in ['iran','foreign']:
                 added=execute(node,'ufw','show','added');assert 'Donino-control-'+job['id'] in added;assert 'fixture-existing' in added
             report['owned_ufw_ports']=True
@@ -139,7 +140,7 @@ def main():
             # accepting connections; a single installer probe isn't that state.
             for _ in range(30):
                 status=api('/api/status')
-                if len(status['paths'])==6 and all(p['healthy'] for p in status['paths']):break
+                if len(status['paths'])==7 and all(p['healthy'] for p in status['paths']):break
                 time.sleep(2)
             else:raise AssertionError('gateway did not reach all-path readiness: '+json.dumps(status))
             payloads=[]
@@ -155,7 +156,20 @@ def main():
                 current=next(p for p in api('/api/status')['paths'] if p['id']==carrier)
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
-            report['results'].append({'installation':'six-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            report['results'].append({'installation':'seven-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            api('/api/action',{'action':'prefer','path':'donino-mux'})
+            initial_mux=next(p for p in api('/api/status')['paths'] if p['id']=='donino-mux')
+            def mux_payload(_):
+                block=os.urandom(1024*1024)
+                with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
+                    conn.settimeout(60);conn.sendall(block);conn.shutdown(socket.SHUT_WR);received=bytearray()
+                    while chunk:=conn.recv(32768):received.extend(chunk)
+                assert hashlib.sha256(received).digest()==hashlib.sha256(block).digest()
+                return len(block)
+            with ThreadPoolExecutor(max_workers=8) as pool:mux_sizes=list(pool.map(mux_payload,range(8)))
+            final_mux=next(p for p in api('/api/status')['paths'] if p['id']=='donino-mux')
+            for key in ['bytes_up','bytes_down']:assert final_mux[key]-initial_mux[key]==sum(mux_sizes)
+            report['mux_concurrent_payloads']={'flows':8,'bytes_each_direction_per_flow':1024*1024,'sha256_match':True,'half_close':True,'real_counters_match':True}
             api('/api/action',{'action':'auto'})
             assert api('/api/status')['selected']=='frp-wss'
             # Delay ONLY the first carrier's real outbound packets on the
@@ -188,10 +202,10 @@ def main():
                 # Relays publish once/second and the monitor samples every five
                 # seconds. Require the payload's completed counters, not merely
                 # an earlier (valid but smaller) process snapshot.
-                if foreign_status['telemetry_fresh'] and len(foreign_status['paths'])==6 and all(path['healthy'] for path in foreign_status['paths']) and counters and counters['bytes_up']>=6*len(data) and counters['bytes_down']>=6*len(data):break
+                if foreign_status['telemetry_fresh'] and len(foreign_status['paths'])==7 and all(path['healthy'] for path in foreign_status['paths']) and counters and counters['bytes_up']>=7*len(data) and counters['bytes_down']>=7*len(data):break
                 time.sleep(2)
             else:raise AssertionError('foreign panel did not observe real signed probes and metrics: '+json.dumps(foreign_status))
-            assert foreign_status['metrics']['bytes_up']>=6*len(data) and foreign_status['metrics']['bytes_down']>=6*len(data)
+            assert foreign_status['metrics']['bytes_up']>=7*len(data) and foreign_status['metrics']['bytes_down']>=7*len(data)
             report['foreign_signed_health_and_local_traffic_counters']=True
             report['foreign_traffic_counters']={k:foreign_status['metrics'][k] for k in ['bytes_up','bytes_down']}
             # Native browser against BOTH actual role panels, without API mocks.

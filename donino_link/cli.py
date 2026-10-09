@@ -74,7 +74,7 @@ def main():
     p.add_argument('--iran',required=True)
     p.add_argument('--foreign',required=True)
     p.add_argument('--service',action='append',required=True,help='id=listen,target, e.g. vpn=0.0.0.0:443,127.0.0.1:443')
-    p.add_argument('--transport',action='append',choices=['frp-wss','frp-quic','backpack-wss','paqet','backhaul-wss','browser-wss'])
+    p.add_argument('--transport',action='append',choices=['frp-wss','frp-quic','backpack-wss','paqet','backhaul-wss','browser-wss','donino-mux'])
     p.add_argument('--experimental',action='store_true')
     p.add_argument('--output',required=True)
     p.add_argument('--password-file',help='read private password file; otherwise ask interactively')

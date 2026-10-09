@@ -59,7 +59,7 @@ class ForeignMonitor:
         pids={r['unit']:r['pid'] for r in self.units}
         for name,path in self.paths.items():
             row=probes.get(name);before=path.healthy
-            adapter_active=name=='browser-wss' or active.get('donino-link-framed.service',False)
+            adapter_active=name in ('browser-wss','donino-mux') or active.get('donino-link-framed.service',False)
             path.healthy=bool(active.get('donino-link-'+name+'.service') and adapter_active and row and row['ok'] and all(row.get('services',{}).values()) and all(results))
             path.error='' if path.healthy else ('unit-inactive' if active.get('donino-link-'+name+'.service') is False else 'awaiting-fresh-iran-probe' if not row else 'probe-or-origin-failed')
             path.latency_ms=row.get('latency_ms') if row else None
@@ -67,7 +67,7 @@ class ForeignMonitor:
             if before!=path.healthy:self.store.event('path-health',{'path':name,'healthy':path.healthy})
         self.last_telemetry=telemetry.get('time',0)
         sources=[]
-        for filename,unit in [('framed-foreign.json','donino-link-framed.service'),('browser-foreign.json','donino-link-browser-wss.service')]:
+        for filename,unit in [('framed-foreign.json','donino-link-framed.service'),('browser-foreign.json','donino-link-browser-wss.service'),('mux-foreign.json','donino-link-donino-mux.service')]:
             data=read_json('/var/lib/donino-link/'+filename,{})
             if active.get(unit) and data.get('pid')==pids.get(unit) and 0<=time.time()-data.get('time',0)<10:sources.append(data)
         self.metrics_data={k:sum(s[k] for s in sources) for k in ['active','accepted','bytes_up','bytes_down']} if sources else None

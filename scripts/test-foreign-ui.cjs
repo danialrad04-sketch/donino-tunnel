@@ -14,9 +14,9 @@ async function main(){
     await outside.locator('#login-form button').click();
     await outside.locator('#foreign-node').waitFor({state:'visible'});
     if(await outside.locator('#setup').isVisible())throw Error('foreign must have its own role panel');
-    await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===6&&document.querySelectorAll('.foreign-unit').length>=7);
+    await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===7&&document.querySelectorAll('.foreign-unit').length>=7);
     if(process.env.DONINO_EXPECT_UNKNOWN==='1'){
-      await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===6&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='نامشخص'));
+      await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===7&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='نامشخص'));
       await outside.screenshot({path:'ui-role-results/foreign-unknown.png',fullPage:true});
       if(errors.length)throw Error(JSON.stringify(errors));
       console.log(JSON.stringify({revoked_peer_no_fresh_health:true,unknown_paths_render:true,js_errors:errors}));
@@ -30,7 +30,7 @@ async function main(){
     await outside.waitForFunction(()=>[...document.querySelectorAll('.foreign-unit')].find(e=>e.textContent.includes('donino-link-frp-quic.service'))?.querySelector('.badge').textContent==='inactive',{},{timeout:45000});
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='frp-quic')?.querySelector('.path-status').textContent!=='سالم');
     await quic.getByRole('button',{name:'شروع',exact:true}).click();
-    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===6&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===7&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
     const panelUnit=outside.locator('.foreign-unit').filter({hasText:/donino-link\.service/});
     if(!await panelUnit.getByRole('button',{name:'توقف',exact:true}).isDisabled())throw Error('panel must not stop itself');
     await outside.locator('#foreign-new-code').click();

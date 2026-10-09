@@ -91,6 +91,30 @@ class PlanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             make_plan(self.root/'port-conflict','192.0.2.10','outside.example',self.services,['browser-wss'],'private-test-password',True,browser_port=8443)
 
+    def test_mux_plan_is_builtin_mutual_tls_and_renewable(self):
+        plan=self.root/'mux-plan'
+        summary=make_plan(plan,'192.0.2.10','outside.example',self.services,['donino-mux'],'private-test-password',True)
+        iran=json.loads((plan/'iran/transports/donino-mux.json').read_text())
+        foreign=json.loads((plan/'foreign/transports/donino-mux.json').read_text())
+        self.assertEqual(iran['url'],'wss://outside.example:24443/link')
+        self.assertEqual(foreign['targets']['web'],'127.0.0.1:8443')
+        self.assertEqual(summary['firewall']['foreign']['tcp'],[24443])
+        self.assertNotIn(24443,summary['firewall']['iran']['tcp'])
+        for role in ['iran','foreign']:
+            install=json.loads((plan/role/'install.json').read_text())
+            self.assertEqual(install['engines'],[]);self.assertFalse(install['browser'])
+            self.assertIn('-m donino_link.mux',(plan/role/'units/donino-link-donino-mux.service').read_text())
+            self.assertFalse((plan/role/'units/donino-link-framed.service').exists())
+        old_ca=(plan/'ca/ca.crt').read_bytes();old_client=(plan/'iran/certs/client.crt').read_bytes()
+        renew_plan(plan)
+        self.assertEqual(old_ca,(plan/'ca/ca.crt').read_bytes())
+        self.assertNotEqual(old_client,(plan/'iran/certs/client.crt').read_bytes())
+        self.assertEqual((plan/'iran/certs/client.crt').read_bytes(),(plan/'ca/client.crt').read_bytes())
+        self.assertEqual((plan/'foreign/certs/browser.crt').read_bytes(),(plan/'ca/browser.crt').read_bytes())
+        stage=self.root/'mux-stage';build_payload(plan/'iran',stage)
+        self.assertTrue((stage/'node/certs/client.key').exists())
+        self.assertFalse(any(p.name in ('ca.key','browser.key') for p in stage.rglob('*')))
+
     def test_packaged_metadata_is_current(self):
         root=Path(__file__).resolve().parent.parent
         self.assertEqual((root/'pyproject.toml').read_bytes(),(root/'donino_link/resources/pyproject.toml').read_bytes())

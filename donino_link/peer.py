@@ -206,7 +206,7 @@ class ForeignAgent:
         config = load_config(self.live)
         if body['config_hash'] != digest(config['health_key']): raise ValueError('telemetry belongs to another installation')
         probes = body['probes']
-        if not isinstance(probes,list) or len(probes)>6: raise ValueError('invalid probes')
+        if not isinstance(probes,list) or len(probes)>7: raise ValueError('invalid probes')
         install = read_json(self.live.parent/'install.json', {})
         names = {u.removeprefix('donino-link-').removesuffix('.service') for u in install.get('units',[])}
         clean=[]
