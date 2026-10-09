@@ -105,15 +105,18 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(install['engines'],[]);self.assertFalse(install['browser'])
             self.assertIn('-m donino_link.mux',(plan/role/'units/donino-link-donino-mux.service').read_text())
             self.assertFalse((plan/role/'units/donino-link-framed.service').exists())
-        old_ca=(plan/'ca/ca.crt').read_bytes();old_client=(plan/'iran/certs/client.crt').read_bytes()
+        self.assertNotEqual((plan/'iran/certs/mux-client.key').read_bytes(),(plan/'foreign/certs/client.key').read_bytes())
+        self.assertFalse((plan/'foreign/certs/mux-client.key').exists())
+        self.assertFalse((plan/'iran/certs/client.key').exists())
+        old_ca=(plan/'ca/ca.crt').read_bytes();old_client=(plan/'iran/certs/mux-client.crt').read_bytes()
         renew_plan(plan)
         self.assertEqual(old_ca,(plan/'ca/ca.crt').read_bytes())
-        self.assertNotEqual(old_client,(plan/'iran/certs/client.crt').read_bytes())
-        self.assertEqual((plan/'iran/certs/client.crt').read_bytes(),(plan/'ca/client.crt').read_bytes())
+        self.assertNotEqual(old_client,(plan/'iran/certs/mux-client.crt').read_bytes())
+        self.assertEqual((plan/'iran/certs/mux-client.crt').read_bytes(),(plan/'ca/mux-client.crt').read_bytes())
         self.assertEqual((plan/'foreign/certs/browser.crt').read_bytes(),(plan/'ca/browser.crt').read_bytes())
         stage=self.root/'mux-stage';build_payload(plan/'iran',stage)
-        self.assertTrue((stage/'node/certs/client.key').exists())
-        self.assertFalse(any(p.name in ('ca.key','browser.key') for p in stage.rglob('*')))
+        self.assertTrue((stage/'node/certs/mux-client.key').exists())
+        self.assertFalse(any(p.name in ('ca.key','browser.key','client.key') for p in stage.rglob('*')))
 
     def test_packaged_metadata_is_current(self):
         root=Path(__file__).resolve().parent.parent

@@ -32,7 +32,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory();cls.ca=Path(cls.tmp.name)/'ca'
-        make_certs(cls.ca,'127.0.0.1',foreign='127.0.0.1')
+        make_certs(cls.ca,'127.0.0.1',foreign='127.0.0.1',mux=True)
 
     @classmethod
     def tearDownClass(cls):cls.tmp.cleanup()
@@ -50,7 +50,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         target='127.0.0.1:'+str(origin.sockets[0].getsockname()[1]);self.public=port();self.local=port();self.health=port()
         common={'ca':str(self.ca/'ca.crt')}
         self.foreign=MuxNode({**common,'role':'foreign','listen':f'127.0.0.1:{self.public}','cert':str(self.ca/'browser.crt'),'key':str(self.ca/'browser.key'),'targets':{'app':target,'health':target}})
-        self.iran=MuxNode({**common,'role':'iran','url':f'wss://127.0.0.1:{self.public}/link','cert':str(self.ca/'client.crt'),'key':str(self.ca/'client.key'),'listeners':{'app':f'127.0.0.1:{self.local}','health':f'127.0.0.1:{self.health}'}})
+        self.iran=MuxNode({**common,'role':'iran','url':f'wss://127.0.0.1:{self.public}/link','cert':str(self.ca/'mux-client.crt'),'key':str(self.ca/'mux-client.key'),'listeners':{'app':f'127.0.0.1:{self.local}','health':f'127.0.0.1:{self.health}'}})
         await self.foreign.start();await self.iran.start()
 
     async def asyncTearDown(self):

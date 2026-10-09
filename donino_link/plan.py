@@ -69,7 +69,7 @@ WantedBy=multi-user.target
 """
 
 
-def make_certs(directory, iran, renew=False, foreign=None):
+def make_certs(directory, iran, renew=False, foreign=None, mux=False):
     directory.mkdir(parents=True,exist_ok=True)
     def run(*args):
         subprocess.run(["openssl",*args],cwd=directory,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -84,7 +84,7 @@ def make_certs(directory, iran, renew=False, foreign=None):
         san = "IP:"+iran
     except ValueError:
         san = "DNS:"+iran
-    for who,purpose in [("server","serverAuth"),("client","clientAuth")]+([("browser","serverAuth")] if foreign else []):
+    for who,purpose in [("server","serverAuth"),("client","clientAuth")]+([("browser","serverAuth")] if foreign else [])+([("mux-client","clientAuth")] if mux else []):
         run("req","-newkey","rsa:3072","-nodes","-keyout",who+".key","-out",who+".csr","-subj","/CN=donino-"+who)
         extra = "\nsubjectAltName="+san if who == "server" else ""
         if who == "browser":
@@ -102,7 +102,7 @@ def make_certs(directory, iran, renew=False, foreign=None):
 def renew_plan(output):
     output=Path(output)
     summary=json.loads((output/'plan.json').read_text())
-    make_certs(output/'ca',summary['iran'],renew=True,foreign=summary['foreign'] if set(summary['transports'])&{'browser-wss','donino-mux'} else None)
+    make_certs(output/'ca',summary['iran'],renew=True,foreign=summary['foreign'] if set(summary['transports'])&{'browser-wss','donino-mux'} else None,mux='donino-mux' in summary['transports'])
     for role,who in [('iran','server'),('foreign','client')]:
         for suffix in ['crt','key']:
             shutil.copy2(output/'ca'/f'{who}.{suffix}',output/role/'certs'/f'{who}.{suffix}')
@@ -113,7 +113,7 @@ def renew_plan(output):
             shutil.copy2(output/'ca'/f'browser.{suffix}',output/'foreign'/'certs'/f'browser.{suffix}')
     if 'donino-mux' in summary['transports']:
         for suffix in ['crt','key']:
-            shutil.copy2(output/'ca'/f'client.{suffix}',output/'iran'/'certs'/f'client.{suffix}')
+            shutil.copy2(output/'ca'/f'mux-client.{suffix}',output/'iran'/'certs'/f'mux-client.{suffix}')
     if 'browser-wss' in summary['transports']:
         path=output/'iran'/'transports'/'browser-wss.json'
         config=json.loads(path.read_text())
@@ -250,7 +250,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     output.mkdir(mode=0o700,parents=True)
     health_key = secrets.token_hex(32)
     (output/"ca").mkdir(mode=0o700)
-    make_certs(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux"} else None)
+    make_certs(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux"} else None,mux='donino-mux' in transports)
     paths,engines,units = [],set(),{"iran":[],"foreign":[]}
     for role in ['iran','foreign']:
         root = output/role
@@ -284,8 +284,8 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 host=f'[{foreign}]' if ':' in foreign else foreign
                 common={'role':role,'ca':f'{ETC}/certs/ca.crt','stats_file':f'/var/lib/donino-link/mux-{role}.json'}
                 if role=='iran':
-                    for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'client.{suffix}',root/'certs'/f'client.{suffix}')
-                    common.update(url=f'wss://{host}:{port}/link',cert=f'{ETC}/certs/client.crt',key=f'{ETC}/certs/client.key',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
+                    for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'mux-client.{suffix}',root/'certs'/f'mux-client.{suffix}')
+                    common.update(url=f'wss://{host}:{port}/link',cert=f'{ETC}/certs/mux-client.crt',key=f'{ETC}/certs/mux-client.key',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
                 else:
                     for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'browser.{suffix}',root/'certs'/f'browser.{suffix}')
                     common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings})
