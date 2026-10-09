@@ -63,7 +63,7 @@ class BrowserServer:
             raise web.HTTPServiceUnavailable()
         self.active += 1
         writer = None
-        ws = web.WebSocketResponse(max_msg_size=CHUNK+1, compress=False, heartbeat=20, receive_timeout=300)
+        ws = web.WebSocketResponse(max_msg_size=CHUNK+2, compress=False, heartbeat=20, receive_timeout=300)
         try:
             reader, writer = await asyncio.wait_for(asyncio.open_connection(*endpoint(target)), 5)
             await ws.prepare(request)
@@ -92,7 +92,7 @@ class BrowserServer:
                     if message.type != WSMsgType.BINARY or not message.data:
                         raise ValueError('invalid frame')
                     kind, payload = message.data[0], message.data[1:]
-                    if kind == DATA and payload and not up_eof.is_set():
+                    if kind == DATA and 0 < len(payload) <= CHUNK and not up_eof.is_set():
                         writer.write(payload)
                         await writer.drain()
                         await ws.send_bytes(bytes([UP_ACK]))

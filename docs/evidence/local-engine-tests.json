@@ -1,0 +1,31 @@
+{
+  "mtls_front_requires_client_certificate": true,
+  "frp-wss": {
+    "probe_ms": 4.243,
+    "bytes_echoed": 2097152,
+    "binary_payload_sha256_match": true
+  },
+  "frp-quic": {
+    "probe_ms": 2.103,
+    "bytes_echoed": 2097152,
+    "binary_payload_sha256_match": true
+  },
+  "backpack-wss": {
+    "probe_ms": 4.324,
+    "bytes_echoed": 2097152,
+    "binary_payload_sha256_match": true
+  },
+  "backhaul-wss": {
+    "probe_ms": 1.45,
+    "bytes_echoed": 2097152,
+    "binary_payload_sha256_match": true
+  },
+  "failover": {
+    "from": "frp-wss",
+    "to": "frp-quic",
+    "bytes_echoed": 524288,
+    "pass": true
+  },
+  "elapsed_seconds": 3.0,
+  "scope": "loopback Linux, amd64; no Iran route, raw packets or production load test"
+}
