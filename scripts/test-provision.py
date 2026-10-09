@@ -156,8 +156,20 @@ def main():
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
             report['results'].append({'installation':'six-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
-            api('/api/action',{'action':'auto'});api('/api/action',{'action':'adaptive'})
-            initial=api('/api/status');assert initial['routing_strategy']=='adaptive' and initial['selected']
+            api('/api/action',{'action':'auto'})
+            assert api('/api/status')['selected']=='frp-wss'
+            # Delay ONLY the first carrier's real outbound packets on the
+            # disposable Iran node. Other carriers, SSH and panels are intact.
+            execute('iran','tc','qdisc','add','dev','eth0','root','handle','1:','prio')
+            execute('iran','tc','qdisc','add','dev','eth0','parent','1:3','handle','30:','netem','delay','150ms')
+            execute('iran','tc','filter','add','dev','eth0','protocol','ip','parent','1:','prio','1','u32','match','ip','sport','24443','0xffff','flowid','1:3')
+            api('/api/action',{'action':'adaptive'})
+            for _ in range(30):
+                initial=api('/api/status');delayed=next(p for p in initial['paths'] if p['id']=='frp-wss')
+                if delayed['healthy'] and delayed['quality']['probe_ms'] and delayed['quality']['probe_ms']>=100 and initial['selected'] not in (None,'frp-wss'):break
+                time.sleep(2)
+            else:raise AssertionError('adaptive did not avoid the healthy delayed carrier: '+json.dumps(initial))
+            report['adaptive_real_netem']={'delayed_carrier':'frp-wss','added_outbound_delay_ms':150,'delayed_carrier_still_healthy':True,'selected':initial['selected'],'delayed_probe_ms':delayed['quality']['probe_ms']}
             adaptive_data=os.urandom(1024*1024)
             with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
                 conn.settimeout(60);conn.sendall(adaptive_data);conn.shutdown(socket.SHUT_WR);result=bytearray()
@@ -167,6 +179,7 @@ def main():
             for key in ['bytes_up','bytes_down']:
                 assert sum(p[key] for p in after_adaptive['paths'])-sum(p[key] for p in initial['paths'])==len(adaptive_data)
             report['adaptive_actual_payload']={'payload_bytes_each_direction':len(adaptive_data),'sha256_match':True,'half_close':True,'real_counters_match':True}
+            execute('iran','tc','qdisc','del','dev','eth0','root')
             api('/api/action',{'action':'static'})
             foreign_login()
             for _ in range(30):
