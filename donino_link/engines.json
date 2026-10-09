@@ -1,0 +1,54 @@
+{
+  "frp": {
+    "version": "v0.71.0",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz",
+        "sha256": "84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716"
+      },
+      "arm64": {
+        "url": "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_arm64.tar.gz",
+        "sha256": "f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266"
+      }
+    }
+  },
+  "backpack": {
+    "version": "v1.8.5",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/AminMGMT/BackPack/releases/download/v1.8.5/backpack_linux_amd64.tar.gz",
+        "sha256": "e80c4da9bdcece9e7a82305e572fdfde9a395a68a985fdd835c1af8ff248b395"
+      },
+      "arm64": {
+        "url": "https://github.com/AminMGMT/BackPack/releases/download/v1.8.5/backpack_linux_arm64.tar.gz",
+        "sha256": "9d9eaa951f8bd3f7b786be94916517c4ec900af0eeaac893b89d03d9867643f4"
+      }
+    }
+  },
+  "backhaul": {
+    "version": "v0.7.2",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/Musixal/Backhaul/releases/download/v0.7.2/backhaul_linux_amd64.tar.gz",
+        "sha256": "57bf95c2eabeddb1152d2e94ac42f4310883ce0fb909ee2a57bd53503b2dabbc"
+      },
+      "arm64": {
+        "url": "https://github.com/Musixal/Backhaul/releases/download/v0.7.2/backhaul_linux_arm64.tar.gz",
+        "sha256": "9a424c97ff16fc3f682e8314c418790d2b5bf3136e008edbb6cd402ea00999f6"
+      }
+    }
+  },
+  "paqet": {
+    "version": "v1.0.0-alpha.21",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/hanselime/paqet/releases/download/v1.0.0-alpha.21/paqet-linux-amd64-v1.0.0-alpha.21.tar.gz",
+        "sha256": "4f2f69e0493746726598485ef18df43372470a1514f8021594137e522f0f4fc7"
+      },
+      "arm64": {
+        "url": "https://github.com/hanselime/paqet/releases/download/v1.0.0-alpha.21/paqet-linux-arm64-v1.0.0-alpha.21.tar.gz",
+        "sha256": "be5c7b35a0a93832063e1dc7fddeb76d4597fb9de76abdfdf7b8574b775e3885"
+      }
+    }
+  }
+}

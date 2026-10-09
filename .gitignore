@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+private*/
+plans/
+*.key
+*.csr
+*.srl
+node.json
+admin.json
+api-token
+*.sqlite3*
+archives/
+bin/

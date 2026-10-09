@@ -1,0 +1,29 @@
+name: Verify Donino Link
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install .
+      - run: python -m unittest discover -s tests -v
+      - run: bash -n scripts/install-node.sh scripts/rollback.sh
+      - run: bash -n donino_link/resources/install-node.sh donino_link/resources/rollback.sh scripts/setup.sh
+      - run: cmp pyproject.toml donino_link/resources/pyproject.toml
+  transport-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install .
+      - run: python scripts/test-engines.py
