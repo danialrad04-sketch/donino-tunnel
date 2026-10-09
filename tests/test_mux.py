@@ -12,8 +12,13 @@ from donino_link.plan import make_certs
 from donino_link.mux import close_writer
 
 
-def port():
-    with socket.socket() as sock:sock.bind(('127.0.0.1',0));return sock.getsockname()[1]
+def ports():
+    # Keep all three reservations open until allocation is complete; closing
+    # each immediately lets the kernel return the same port a second time.
+    with contextlib.ExitStack() as stack:
+        sockets=[stack.enter_context(socket.socket()) for _ in range(3)]
+        for sock in sockets:sock.bind(('127.0.0.1',0))
+        return [sock.getsockname()[1] for sock in sockets]
 
 
 class MuxFrameTests(unittest.TestCase):
@@ -48,7 +53,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 writer.close();self.origin_tasks.discard(task)
         origin=await asyncio.start_server(echo,'127.0.0.1',0);self.origins.append(origin)
-        target='127.0.0.1:'+str(origin.sockets[0].getsockname()[1]);self.public=port();self.local=port();self.health=port()
+        target='127.0.0.1:'+str(origin.sockets[0].getsockname()[1]);self.public,self.local,self.health=ports()
         common={'ca':str(self.ca/'ca.crt')}
         self.foreign=MuxNode({**common,'role':'foreign','listen':f'127.0.0.1:{self.public}','cert':str(self.ca/'browser.crt'),'key':str(self.ca/'browser.key'),'targets':{'app':target,'health':target}})
         self.iran=MuxNode({**common,'role':'iran','url':f'wss://127.0.0.1:{self.public}/link','cert':str(self.ca/'mux-client.crt'),'key':str(self.ca/'mux-client.key'),'listeners':{'app':f'127.0.0.1:{self.local}','health':f'127.0.0.1:{self.health}'}})
