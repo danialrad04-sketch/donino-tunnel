@@ -119,7 +119,8 @@ class BrowserServer:
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
-        except (OSError, ValueError, asyncio.TimeoutError):
+        except (OSError, ValueError, asyncio.TimeoutError) as error:
+            print("BrowserLink server stream: "+type(error).__name__+": "+str(error),flush=True)
             if ws.prepared:
                 await ws.close(code=1002)
             else:
@@ -286,8 +287,8 @@ class BrowserClient:
             done, _ = await asyncio.wait(transfer, return_when=asyncio.FIRST_COMPLETED)
             for finished in done:
                 finished.result()
-        except (OSError, ValueError, asyncio.TimeoutError):
-            pass
+        except (OSError, ValueError, asyncio.TimeoutError) as error:
+            print("BrowserLink client stream: "+type(error).__name__+": "+str(error),flush=True)
         finally:
             for pending in transfer:
                 pending.cancel()

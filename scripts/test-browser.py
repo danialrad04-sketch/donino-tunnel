@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real native Chromium transport test; loopback only, no firewall claims."""
+import contextlib
 import argparse
 import asyncio
 import hashlib
@@ -64,7 +65,8 @@ async def test(chromium, output, root_fixture):
                     assert result==payload,'binary payload mismatch or truncated EOF'
                     return {'bytes_each_direction':size,'seconds':round(time.monotonic()-start,3),'sha256_match':True}
                 finally:
-                    sending.cancel();await asyncio.gather(sending,return_exceptions=True);w.close();await w.wait_closed()
+                    sending.cancel();await asyncio.gather(sending,return_exceptions=True);w.close()
+                    with contextlib.suppress(OSError):await w.wait_closed()
             measurements=await asyncio.gather(transfer(4*1024*1024),transfer(2*1024*1024))
             r,w=await asyncio.open_connection('127.0.0.1',33001)
             payload=os.urandom(128*1024);w.write(payload);await w.drain();w.write_eof()
