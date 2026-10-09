@@ -67,7 +67,8 @@ def make_bootstrap(directory,role,address,password,panel_port=None,agent_port=94
     if role=='foreign' and (port in (agent_port,19090) or agent_port==19090):raise ValueError('panel, pairing and health ports must differ')
     password_record(password)  # Validate before touching managed authentication.
     node=Path(directory);node.mkdir(parents=True,mode=0o700)
-    panel={'listen':f'0.0.0.0:{port}','allow_insecure_http':True,**stable_auth(role,password)}
+    listen_host='[::]' if ':' in address else '0.0.0.0'
+    panel={'listen':f'{listen_host}:{port}','allow_insecure_http':True,**stable_auth(role,password)}
     cfg={'schema':1,'role':role,'health_key':secrets.token_hex(32),'bootstrap':True,'public_address':address,
          'panel':panel,'state_db':'/var/lib/donino-link/'+('state.sqlite3' if role=='iran' else 'foreign-state.sqlite3')}
     if role=='iran':cfg.update(services=[],paths=[])

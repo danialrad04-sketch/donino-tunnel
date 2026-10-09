@@ -131,6 +131,8 @@ class BootstrapTests(unittest.TestCase):
             iran=make_bootstrap(Path(tmp)/'iran','iran','192.0.2.10','password-test-123')
             foreign=make_bootstrap(Path(tmp)/'foreign','foreign','198.51.100.20','password-test-123')
             self.assertEqual(iran['services'],[]);self.assertEqual(iran['paths'],[]);self.assertEqual(foreign['targets'],{})
+            ipv6=make_bootstrap(Path(tmp)/'ipv6','foreign','2001:db8::10','password-test-123')
+            self.assertEqual(ipv6['panel']['listen'],'[::]:8091')
             manifest=json.loads((Path(tmp)/'foreign/install.json').read_text());self.assertEqual(manifest['engines'],[]);self.assertIn(9444,manifest['public_ports']['tcp'])
             iran['bootstrap']=False;atomic_json(Path(tmp)/'iran/node.json',iran)
             with self.assertRaises(ValueError):load_config(Path(tmp)/'iran/node.json')

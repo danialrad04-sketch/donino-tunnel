@@ -35,7 +35,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='donino-systemd-') as tmp:
         work=Path(tmp)
         try:
-            run('docker','build','-t',PREFIX,str(BASE/'tests/systemd'))
+            try:
+                run('docker','build','-t',PREFIX,str(BASE/'tests/systemd'))
+                report['ci_base_image_source']='docker.io/library/debian:12'
+            except RuntimeError as error:
+                if '429 Too Many Requests' not in str(error):raise
+                # Google's documented cache of public Docker Hub images. Only
+                # the disposable CI base changes; production setup uses apt.
+                # https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
+                run('docker','build','--build-arg','BASE_IMAGE=mirror.gcr.io/library/debian:12','-t',PREFIX,str(BASE/'tests/systemd'))
+                report['ci_base_image_source']='mirror.gcr.io/library/debian:12 (Docker Hub 429 fallback)'
             for node in ['iran','foreign']:
                 run('docker','run','-d','--name',PREFIX+'-'+node,'--privileged','--cgroupns=host','--tmpfs','/run','--tmpfs','/tmp','-v','/sys/fs/cgroup:/sys/fs/cgroup:rw','-v',str(BASE)+':/source:ro','-v',str(work)+':/work',PREFIX)
                 for _ in range(60):
