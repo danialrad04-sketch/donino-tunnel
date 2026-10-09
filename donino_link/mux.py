@@ -117,6 +117,9 @@ class Stream:
         workers=[]
         try:
             await asyncio.wait_for(asyncio.shield(self.ready),self.session.node.connect_timeout)
+            # Python 3.11 wait_for can return an already completed future when
+            # cancellation races with READY. Never start workers after RESET.
+            if self.closed or self.session.closed:return
             self.counted=self.service!='health'
             if self.counted:self.session.node.stats.active+=1;self.session.node.stats.accepted+=1
             workers=[asyncio.create_task(self.produce()),asyncio.create_task(self.consume()),asyncio.create_task(self.guard())]
@@ -184,6 +187,7 @@ class Session:
     async def accept(self,stream):
         try:
             stream.reader,stream.writer=await asyncio.wait_for(asyncio.open_connection(*endpoint(self.node.targets[stream.service])),self.node.connect_timeout)
+            if stream.closed or self.closed:return
             stream.ready.set_result(True)
             await self.send(READY,stream.sid)
             await stream.run()
@@ -246,9 +250,12 @@ class Session:
             stream.closed=True
             if stream.writer:stream.writer.close()
         for task in tasks:task.cancel()
-        await asyncio.gather(*tasks,return_exceptions=True)
-        self.streams.clear()
-        with contextlib.suppress(OSError,ClientError,asyncio.TimeoutError):await self.ws.close()
+        try:
+            with contextlib.suppress(OSError,ClientError,asyncio.TimeoutError):
+                await asyncio.wait_for(self.ws.close(),self.node.connect_timeout)
+        finally:
+            await asyncio.gather(*tasks,return_exceptions=True)
+            self.streams.clear()
 
 
 class MuxNode:
