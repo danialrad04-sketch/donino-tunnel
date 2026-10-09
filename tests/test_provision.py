@@ -9,7 +9,8 @@ from unittest.mock import patch
 from aiohttp.test_utils import TestClient, TestServer
 from donino_link.panel import password_record
 from donino_link.config import atomic_json
-from donino_link.provision import Worker, Coordinator, CommandFailure, application, pinned_line
+from donino_link.provision import Worker, Coordinator, CommandFailure, application, pinned_line,scan_pinned_key
+from types import SimpleNamespace
 from donino_link.preflight import conflicts
 from test_core import configuration
 
@@ -20,6 +21,30 @@ class Recorder:
         self.calls.append(args)
         if self.fail and self.fail(args): raise CommandFailure(1)
         return ''
+
+
+class SSHScanTests(unittest.TestCase):
+    def setUp(self):
+        raw=b'trusted key';self.key=base64.b64encode(raw).decode()
+        self.pin='SHA256:'+base64.b64encode(hashlib.sha256(raw).digest()).decode().rstrip('=')
+
+    def test_only_empty_scan_is_retried_and_paired_algorithm_is_specific(self):
+        with patch('donino_link.provision.subprocess.run',side_effect=[SimpleNamespace(stdout=''),SimpleNamespace(stdout='host ssh-ed25519 '+self.key)]) as scan,patch('donino_link.provision.time.sleep'):
+            self.assertIn(self.key,scan_pinned_key('example.com',22,self.pin,'ed25519'))
+            self.assertEqual(scan.call_count,2)
+            self.assertEqual(scan.call_args.args[0][-2:],[ 'ed25519','example.com'])
+
+    def test_different_key_is_rejected_without_retry(self):
+        with patch('donino_link.provision.subprocess.run',return_value=SimpleNamespace(stdout='host ssh-ed25519 '+base64.b64encode(b'other key').decode())) as scan,patch('donino_link.provision.time.sleep') as delay:
+            with self.assertRaisesRegex(ValueError,'does not match'):scan_pinned_key('example.com',22,self.pin,'ed25519')
+            self.assertEqual(scan.call_count,1);delay.assert_not_called()
+
+    def test_empty_scan_has_bounded_attempts_and_invalid_algorithm_is_not_executed(self):
+        with patch('donino_link.provision.subprocess.run',return_value=SimpleNamespace(stdout='')) as scan,patch('donino_link.provision.time.sleep'):
+            with self.assertRaisesRegex(ValueError,'returned no key'):scan_pinned_key('example.com',22,self.pin)
+            self.assertEqual(scan.call_count,3);scan.reset_mock()
+            with self.assertRaisesRegex(ValueError,'key type'):scan_pinned_key('example.com',22,self.pin,'ed25519; sh')
+            scan.assert_not_called()
 
 
 class ProvisionTests(unittest.IsolatedAsyncioTestCase):

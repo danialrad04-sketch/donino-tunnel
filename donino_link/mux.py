@@ -181,6 +181,7 @@ class Session:
         stream.task=self.spawn(stream.run())
         try:await self.send(OPEN,sid,service.encode('ascii'))
         except BaseException:
+            stream.closed=True
             stream.task.cancel();await asyncio.gather(stream.task,return_exceptions=True);raise
         return stream.task
 

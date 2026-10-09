@@ -76,6 +76,21 @@ def pinned_line(scan, host, port, fingerprint):
     raise ValueError('SSH host key does not match the trusted fingerprint')
 
 
+def scan_pinned_key(host,port,fingerprint,key_type=None):
+    if key_type is not None and key_type not in ('ed25519','ecdsa','rsa'):
+        raise ValueError('invalid SSH host key type')
+    if not isinstance(fingerprint,str) or not re.fullmatch(r'SHA256:[A-Za-z0-9+/]{43}',fingerprint):
+        raise ValueError('expected SHA256 SSH host fingerprint')
+    for attempt in range(3):
+        result=subprocess.run(['ssh-keyscan','-T','5','-p',str(port),'-t',key_type or 'ed25519,ecdsa,rsa',host],capture_output=True,text=True,timeout=25)
+        # A received key is checked immediately. Never retry a different key
+        # into acceptance; only a scan with no supported key can be retried.
+        if any(len(parts)==3 and parts[1] in ('ssh-ed25519','ecdsa-sha2-nistp256','ssh-rsa') for line in result.stdout.splitlines() for parts in [line.split()]):
+            return pinned_line(result.stdout,host,port,fingerprint)
+        if attempt<2:time.sleep(.25*(attempt+1))
+    raise ValueError('SSH host key scan returned no key; check SSH reachability and rate limits')
+
+
 class CommandFailure(RuntimeError):
     def __init__(self, code):
         self.code = code
@@ -274,7 +289,7 @@ class Worker:
             strict_fields(result,['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'],['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'])
             integer(result['ssh_port'],1,65535,'SSH port');endpoint(result['panel_listen'])
             if not isinstance(result['pair_id'],str) or not SAFE_ID.fullmatch(result['pair_id']) or not isinstance(result['agent_token'],str) or not re.fullmatch('[A-Za-z0-9_-]{43}',result['agent_token']):raise ValueError('invalid pairing response')
-            profile=self.add_profile({'name':body['name'],'host':host,'port':result['ssh_port'],'fingerprint':result['ssh_fingerprint'],'family':result['ssh_family']})
+            profile=self.add_profile({'name':body['name'],'host':host,'port':result['ssh_port'],'fingerprint':result['ssh_fingerprint'],'family':result['ssh_family'],'key_type':'ed25519'})
             with self.lock:
                 profiles=read_json(self.root/'profiles.json',[])
                 for p in profiles:
@@ -304,7 +319,7 @@ class Worker:
             except (OSError,ValueError,ClientError,asyncio.TimeoutError):continue
 
     def add_profile(self, body):
-        strict_fields(body, ['name', 'host', 'port', 'fingerprint','family'], ['name', 'host', 'port', 'fingerprint'])
+        strict_fields(body, ['name', 'host', 'port', 'fingerprint','family','key_type'], ['name', 'host', 'port', 'fingerprint'])
         if body.get('family') is not None and body['family'] not in ('inet','inet6'):raise ValueError('invalid SSH address family')
         if not isinstance(body['name'], str) or not 1 <= len(body['name']) <= 64: raise ValueError('invalid connection name')
         host = public_address(body['host']); port = integer(body['port'], 1, 65535, 'SSH port')
@@ -313,8 +328,7 @@ class Worker:
         addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         if not addresses or (not self.allow_private and any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses)):
             raise ValueError('foreign SSH address must resolve to public IPs')
-        scan = subprocess.run(['ssh-keyscan', '-T', '5', '-p', str(port), '-t', 'ed25519,ecdsa,rsa', host], capture_output=True, text=True, timeout=25)
-        line = pinned_line(scan.stdout, host, port, body['fingerprint'])
+        line = scan_pinned_key(host,port,body['fingerprint'],body.get('key_type'))
         profile = {'id': secrets.token_hex(16), 'name': body['name'], 'host': host, 'port': port, 'fingerprint': body['fingerprint']}
         if body.get('family'):profile['family']=body['family']
         path = self.root/'hosts'/profile['id']; path.write_text(line); path.chmod(0o600)
