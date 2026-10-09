@@ -174,14 +174,15 @@ class BrowserClient:
         delay = 1
         while True:
             try:
-                url = urlsplit(self.config['origin'])
-                tls = ssl.create_default_context(cafile=self.config.get('ca'))
-                # Scoped browser SPKI exception never substitutes for hostname,
-                # CA and certificate lifetime verification before startup.
-                _, checked = await asyncio.wait_for(asyncio.open_connection(url.hostname, url.port or 443, ssl=tls, server_hostname=url.hostname), 10)
-                checked.close()
-                with contextlib.suppress(OSError):
-                    await checked.wait_closed()
+                if self.config.get('spki'):
+                    url = urlsplit(self.config['origin'])
+                    tls = ssl.create_default_context(cafile=self.config.get('ca'))
+                    # Scoped browser SPKI exception never substitutes for hostname,
+                    # CA and certificate lifetime verification before startup.
+                    _, checked = await asyncio.wait_for(asyncio.open_connection(url.hostname, url.port or 443, ssl=tls, server_hostname=url.hostname), 10)
+                    checked.close()
+                    with contextlib.suppress(OSError):
+                        await checked.wait_closed()
                 env = os.environ.copy()
                 # Browser traffic must not inherit a controller's HTTP proxy.
                 for key in list(env):
