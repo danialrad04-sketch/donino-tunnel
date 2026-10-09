@@ -199,6 +199,9 @@ def main():
                 if not revoked_status['telemetry_fresh']:break
                 time.sleep(2)
             assert not revoked_status['telemetry_fresh'] and all(not path['healthy'] for path in revoked_status['paths'])
+            for node in ['iran','foreign']:
+                shipped=execute(node,'/opt/donino-link/current/venv/bin/python','-c',"from pathlib import Path;import donino_link.panel,hashlib;print(hashlib.sha256((Path(donino_link.panel.__file__).parent/'web/app.js').read_bytes()).hexdigest())").strip()
+                assert shipped==hashlib.sha256((BASE/'donino_link/web/app.js').read_bytes()).hexdigest(),node+' shipped a different panel asset'
             unknown_ui=subprocess.run(['node',str(BASE/'scripts/test-foreign-ui.cjs')],capture_output=True,text=True,env={**env,'DONINO_EXPECT_UNKNOWN':'1'},timeout=90)
             if unknown_ui.returncode:raise AssertionError('unknown health UI failed: '+unknown_ui.stderr[-3000:])
             print(unknown_ui.stdout);report['revoked_peer_health_becomes_unknown']=True
