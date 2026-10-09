@@ -52,7 +52,7 @@ class ForeignMonitor:
                     if response.status!=200:raise OSError('agent unavailable')
                     self.agent=await response.json()
         except (OSError,ClientError,asyncio.TimeoutError):self.agent={'available':False}
-        telemetry=self.agent.get('telemetry') or read_json('/var/lib/donino-link/peer-observations.json',{})
+        telemetry=(self.agent.get('telemetry') or {}) if self.agent.get('available') else read_json('/var/lib/donino-link/peer-observations.json',{})
         fresh=0<=time.time()-telemetry.get('time',0)<=45 and telemetry.get('config_hash')==digest(self.config['health_key'])
         probes={p['path']:p for p in telemetry.get('probes',[])} if fresh else {}
         active={r['unit']:r['active'] for r in self.units}
@@ -74,7 +74,7 @@ class ForeignMonitor:
         if self.metrics_data:self.active=self.metrics_data['active'];self.accepted=self.metrics_data['accepted']
 
     def snapshot(self):
-        telemetry=self.agent.get('telemetry') or read_json('/var/lib/donino-link/peer-observations.json',{})
+        telemetry=(self.agent.get('telemetry') or {}) if self.agent.get('available') else read_json('/var/lib/donino-link/peer-observations.json',{})
         fresh=0<=time.time()-telemetry.get('time',0)<=45 and telemetry.get('config_hash')==digest(self.config['health_key'])
         rows=[]
         for p in self.paths.values():

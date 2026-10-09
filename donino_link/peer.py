@@ -29,6 +29,7 @@ SOCKET = Path('/run/donino-foreign/agent.sock')
 SETTINGS = Path('/etc/donino-foreign-agent.json')
 LIVE = Path('/etc/donino-link/current/node.json')
 SSH_DROPIN = Path('/etc/ssh/sshd_config.d/00-donino-pair.conf')
+OBSERVATIONS = Path('/var/lib/donino-link/peer-observations.json')
 
 
 def digest(value):
@@ -126,6 +127,14 @@ class ForeignAgent:
 
     def pairs(self): return read_json(self.root/'pairs.json', [])
 
+    def publish_telemetry(self, data):
+        atomic_json(self.root/'telemetry.json',data)
+        # Readable sanitized observations for the unprivileged foreign panel.
+        import grp
+        atomic_json(OBSERVATIONS,data)
+        os.chown(OBSERVATIONS,0,grp.getgrnam('donino-link').gr_gid)
+        os.chmod(OBSERVATIONS,0o640)
+
     def lease(self):
         lease = read_json(self.root/'lease.json', {})
         return lease if lease.get('expires',0) > time.time() else None
@@ -187,6 +196,8 @@ class ForeignAgent:
             pairs = self.pairs(); pair = next((p for p in pairs if p['id']==identity),None)
             if pair is None: raise ValueError('peer not found')
             pair['revoked']=True; atomic_json(self.root/'pairs.json',pairs)
+            if read_json(self.root/'telemetry.json',{}).get('peer_id')==identity:
+                self.publish_telemetry({})
             self.ssh_writer(self.root,pairs)
             return {'revoked':True,'tunnels_stopped':False}
 
@@ -208,12 +219,13 @@ class ForeignAgent:
             if not isinstance(services,dict) or set(services)-set(config.get('targets',{})) or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
             clean.append({'path':row['path'],'ok':row['ok'],'latency_ms':latency,'services':services})
         data={'time':time.time(),'peer_id':pair['id'],'peer_name':pair['name'],'source':pair['source'],'probes':clean,'config_hash':body['config_hash']}
-        atomic_json(self.root/'telemetry.json',data)
-        # Readable sanitized observations for the unprivileged foreign panel.
-        import grp
-        atomic_json('/var/lib/donino-link/peer-observations.json',data)
-        os.chown('/var/lib/donino-link/peer-observations.json',0,grp.getgrnam('donino-link').gr_gid)
-        os.chmod('/var/lib/donino-link/peer-observations.json',0o640)
+        # Authentication precedes this worker thread. Recheck while holding the
+        # revocation lock so an already authenticated request cannot republish
+        # fresh health after its peer has been revoked.
+        with self.lock:
+            if not any(p['id']==pair['id'] and not p.get('revoked') for p in self.pairs()):
+                raise web.HTTPUnauthorized()
+            self.publish_telemetry(data)
         return {'accepted':True}
 
     def reserve(self, pair, body):
@@ -234,10 +246,12 @@ class ForeignAgent:
 
     def state(self):
         pairs=[{k:p[k] for k in ['id','name','source','created','revoked']} for p in self.pairs()]
+        telemetry=read_json(self.root/'telemetry.json',None)
+        if telemetry and not any(p['id']==telemetry.get('peer_id') and not p['revoked'] for p in pairs):telemetry=None
         return {'available':True,'agent_port':self.settings['port'],'paired':pairs,'lease':self.lease(),
                 'action_busy':self.action_busy,'actions':read_json(self.root/'actions.json',[]),
                 'pending_expires':read_json(self.root/'pending.json',{}).get('expires'),
-                'telemetry':read_json(self.root/'telemetry.json',None)}
+                'telemetry':telemetry}
 
     async def action(self, body):
         strict_fields(body,['unit','action'],['unit','action'])

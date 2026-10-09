@@ -90,6 +90,20 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError,'service observations'):
             self.agent.telemetry(pair,{'config_hash':digest('1'*64),'probes':[{'path':'frp-wss','ok':True,'services':{'unknown':True}}]})
 
+    async def test_revocation_invalidates_health_and_rejects_inflight_publication(self):
+        result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
+        observations=self.root/'observations.json'
+        body={'config_hash':digest('1'*64),'probes':[{'path':'frp-wss','ok':True,'services':{'app':True}}]}
+        with patch('donino_link.peer.OBSERVATIONS',observations),patch('grp.getgrnam') as group,patch('donino_link.peer.os.chown'):
+            group.return_value.gr_gid=0
+            self.agent.telemetry(pair,body)
+            self.assertEqual(self.agent.state()['telemetry']['peer_id'],pair['id'])
+            self.agent.revoke(pair['id'])
+            self.assertFalse(self.agent.state()['telemetry'])
+            self.assertEqual(json.loads(observations.read_text()),{})
+            with self.assertRaises(web.HTTPUnauthorized):self.agent.telemetry(pair,body)
+            self.assertEqual(json.loads(observations.read_text()),{})
+
     async def test_tls_pin_is_checked_before_pairing_body_is_sent(self):
         cert,key=self.root/'test.crt',self.root/'test.key'
         subprocess.run(['openssl','req','-x509','-newkey','ed25519','-nodes','-days','1','-subj','/CN=Test','-keyout',str(key),'-out',str(cert)],check=True,capture_output=True)
@@ -122,6 +136,11 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
                 telemetry.update(time=stamp,config_hash='wrong');await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy'])
                 telemetry['config_hash']=digest(config['health_key']);units[0].update(active=False,state='inactive');await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy'])
                 self.assertIsNone(monitor.snapshot()['metrics'])
+                # An authoritative empty agent observation must never fall back
+                # to a preceding readable file containing apparently fresh data.
+                monitor.agent={'available':True,'telemetry':None}
+                self.assertFalse(monitor.snapshot()['telemetry_fresh'])
+                self.assertEqual(monitor.snapshot()['paths'][0]['observation'],'unknown')
         finally:store.close()
 
 
