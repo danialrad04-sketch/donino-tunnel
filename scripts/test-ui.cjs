@@ -64,7 +64,7 @@ async function main(){
     await page.locator('#setup-preview').click();
     await page.locator('#setup-review').waitFor({state:'visible'});
     if(!await page.locator('#setup-start').isDisabled())throw Error('start must wait for review');
-    await page.screenshot({path:'ui-results/setup.png',fullPage:true});
+    await page.locator('#setup').screenshot({path:'ui-results/setup.png'});
     await page.locator('#setup-confirm').check();await page.locator('#setup-start').click();
     await page.locator('#setup-job').waitFor({state:'visible'});
     await page.waitForFunction(()=>document.querySelector('#setup-job-status').textContent.includes('در حال'));

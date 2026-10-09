@@ -217,6 +217,10 @@ class Worker:
         if not self.identity.exists():
             subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'donino-control', '-f', str(self.identity)], check=True)
         self.identity.chmod(0o600)
+        if not self.identity.with_suffix('.pub').exists():
+            public = subprocess.check_output(['ssh-keygen','-y','-f',str(self.identity)],text=True)
+            self.identity.with_suffix('.pub').write_text(public)
+            self.identity.with_suffix('.pub').chmod(0o600)
 
     def profile(self, identity):
         if not isinstance(identity, str) or not SAFE_ID.fullmatch(identity): raise ValueError('invalid connection ID')
@@ -288,6 +292,18 @@ class Worker:
         with self.lock:
             if self.busy: raise ValueError('installation already running')
             spec = self.validate_spec(body)
+            # Retain 20 recent terminal jobs plus the most recent successful
+            # plan (its controller CA is still needed for that installation).
+            records = [(p,read_json(p)) for p in (self.root/'jobs').glob('*/job.json')]
+            records.sort(key=lambda item:item[1]['created'],reverse=True)
+            terminal = [item for item in records if item[1]['status']!='running']
+            keep = {item[1]['id'] for item in terminal[:20]}
+            successful = next((item for item in terminal if item[1]['status']=='succeeded'),None)
+            if successful:keep.add(successful[1]['id'])
+            for path,job in terminal:
+                if job['id'] not in keep:
+                    shutil.rmtree(self.root/'plans'/job['plan_id'],ignore_errors=True)
+                    shutil.rmtree(path.parent,ignore_errors=True)
             # Bound private plan storage. Unused previews expire after one hour.
             for p in (self.root/'plans').iterdir():
                 meta = read_json(p/'control.json', {})
@@ -358,6 +374,7 @@ class Worker:
             coordinator = Coordinator(self, runner)
             if recovery:
                 meta = read_json(self.root/'plans'/job['plan_id']/'control.json')
+                meta['used'] = True; atomic_json(self.root/'plans'/job['plan_id']/'control.json',meta)
                 await asyncio.to_thread(coordinator.rollback, job, self.profile(meta['profile_id']))
                 if job['status'] != 'rollback_failed': job['status'] = 'interrupted'
                 self.event(job, 'recovery', 'failed', 'Worker restarted during installation; active changes were rolled back. Preview a new plan to retry.')

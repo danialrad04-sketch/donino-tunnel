@@ -25,7 +25,7 @@ if [[ "$mode" != --activate ]]; then
 [[ "$ID" == debian && ( "$VERSION_ID" == 12 || "$VERSION_ID" == 13 ) || "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || { echo 'Supported: Debian 12/13 or Ubuntu 24.04.' >&2; exit 1; }
 if command -v apt-get >/dev/null; then
   apt-get update -q
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3 python3-venv python3-pip openssl iproute2 iputils-ping iptables ca-certificates openssh-client
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends python3 python3-venv python3-pip openssl iproute2 iputils-ping iptables ca-certificates openssh-client
 else
   echo 'Automatic installation supports Debian 12/13 and Ubuntu 24.04 with Python 3.11+.' >&2
   exit 1
@@ -33,7 +33,7 @@ fi
 if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("browser") else 1)' "$source_dir/node/install.json"; then
   . /etc/os-release
   [[ "$ID" == debian ]] || { echo 'BrowserLink automatic Chromium installation currently requires Debian 12/13; Ubuntu snap Chromium is not supported by this unit.' >&2; exit 1; }
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q chromium nodejs
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends chromium chromium-sandbox nodejs
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
 id donino-link >/dev/null 2>&1 || useradd --system --user-group --home /var/lib/donino-link --shell /usr/sbin/nologin donino-link
@@ -42,7 +42,8 @@ install -d -m 0700 -o donino-link -g donino-link /var/lib/donino-link
 install -d -m 0750 -o root -g donino-link "$release_dir"
 cp -a "$source_dir/donino_link" "$source_dir/scripts" "$source_dir/pyproject.toml" "$source_dir/node" "$release_dir/"
 python3 -m venv "$release_dir/venv"
-"$release_dir/venv/bin/pip" install --disable-pip-version-check "$release_dir"
+install -d -m 0700 /var/cache/donino-link/pip
+"$release_dir/venv/bin/pip" --cache-dir /var/cache/donino-link/pip install --disable-pip-version-check "$release_dir"
 engines=$(/usr/bin/python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["engines"]))' "$release_dir/node/install.json")
 fetch_args=()
 for engine in $engines; do fetch_args+=(--engine "$engine"); done
