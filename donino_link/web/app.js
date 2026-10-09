@@ -32,7 +32,7 @@ $("theme").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?
 document.querySelectorAll(".connection-mode").forEach(n=>n.textContent=location.protocol==="https:"?"HTTPS":"HTTP");
 document.querySelectorAll("nav a").forEach(a=>a.onclick=()=>{document.querySelectorAll("nav a").forEach(n=>n.classList.toggle("nav-active",n===a));});
 const modeNames={enabled:"فعال",disabled:"غیرفعال",draining:"در حال تخلیه"};
-const eventNames={"path-health":"سلامت مسیر","operator":"عملیات مدیر","login":"ورود مدیر","login-failed":"ورود ناموفق","route-change":"تغییر مسیر","backend-connect-failed":"مقصد در دسترس نیست"};
+const eventNames={"path-health":"سلامت مسیر","operator":"عملیات مدیر","login":"ورود مدیر","login-failed":"ورود ناموفق","route-change":"تغییر مسیر","backend-connect-failed":"مقصد در دسترس نیست","unit-state":"وضعیت سرویس","foreign-action":"مدیریت خارج","provision":"نصب تانل"};
 function render(d){
   state=d;
   const foreign=d.role==="foreign";configureRole(foreign);
@@ -57,7 +57,7 @@ function render(d){
     if(p.id===d.selected) card.classList.add("selected");
     card.querySelector("h3").textContent=p.id;
     card.querySelector(".transport").textContent=p.transport.toUpperCase();
-    const b=card.querySelector(".path-status"); b.textContent=foreign&&p.observation==="unknown"?"نامشخص":p.healthy?"سالم":"ناموفق";b.classList.add(p.healthy?"good":foreign&&p.observation==="unknown"?"":"bad");
+    const b=card.querySelector(".path-status"); b.textContent=foreign&&p.observation==="unknown"?"نامشخص":p.healthy?"سالم":"ناموفق";if(p.healthy)b.classList.add("good");else if(!(foreign&&p.observation==="unknown"))b.classList.add("bad");
     const metrics=card.querySelector(".path-metrics");
     (foreign?[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","آزمون از ایران"],[d.units.find(u=>u.unit==="donino-link-"+p.id+".service")?.active?"روشن":"خاموش","سرویس محلی"],[p.observation==="fresh"?"تازه":"نامشخص","شاهد ارتباط"]]:[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","تأخیر"],[fa(p.active),"اتصال فعال"],[bytes(p.bytes_up+p.bytes_down),"ترافیک"]]).forEach(([v,l])=>{const n=el("div");n.append(el("b",v),el("span",l));metrics.append(n);});
     card.querySelector(".mode").textContent=modeNames[p.mode];
@@ -92,6 +92,8 @@ function eventDescription(e){
   if(e.kind==="path-health")return (d.path||"مسیر")+" · "+(d.healthy?"پاسخ معتبر دریافت شد":"آزمون سلامت ناموفق");
   if(e.kind==="login")return "ورود به مرکز فرمان";
   if(e.kind==="login-failed")return "رمز واردشده معتبر نبود";
+  if(e.kind==="unit-state")return (d.unit||"سرویس")+" · "+({active:"روشن",inactive:"خاموش",failed:"ناموفق"}[d.state]||d.state);
+  if(e.kind==="foreign-action"||e.kind==="provision")return ({"/code":"ساخت کد جفت‌سازی","/pair":"جفت‌سازی خارج","/revoke":"لغو مدیریت","/action":"عملیات سرویس","/preview":"نقشهٔ نصب","/start":"شروع نصب"}[d.operation]||d.operation)+(d.unit?" · "+d.unit:"");
   if(e.kind==="backend-connect-failed")return (d.path||"مسیر")+" · سرویس مقصد در دسترس نیست";
   return JSON.stringify(d);
 }
@@ -185,7 +187,7 @@ function renderForeign(d){
   if(!Object.keys(d.targets||{}).length)$("foreign-targets").append(el("p","مقصدی تعریف نشده؛ سرویس TCP را در نقشهٔ پنل ایران اضافه کن.","muted"));
   $("foreign-probe-note").textContent=(d.telemetry_fresh?"آزمون تازهٔ تانل دریافت شد":"آزمون دوطرفه نامشخص است")+(d.probe_time?" · آخرین دریافت: "+new Date(d.probe_time*1000).toLocaleString("fa-IR"):"");
   $("foreign-action-history").replaceChildren(...(f.actions||[]).slice(0,4).map(a=>el("p",a.unit+" · "+({start:"شروع",stop:"توقف",restart:"راه‌اندازی مجدد",test:"آزمون مقصد"}[a.action]||a.action)+" · "+({running:"در حال اجرا",succeeded:"موفق",failed:"ناموفق",interrupted:"متوقف‌شده"}[a.status]||a.status)+(a.error?" · "+a.error:""),"field-help")));
-  for(const u of d.units||[]){let view=foreignUnitCards.get(u.unit);if(!view){const card=el("article",undefined,"setup-block foreign-unit"),head=el("div",undefined,"service-header"),badge=el("span",undefined,"badge");head.append(el("code",u.unit),badge);const metrics=el("p",undefined,"muted"),buttons=el("div",undefined,"foreign-service-buttons");const controls=[];for(const [op,text] of [["start","شروع"],["restart","راه‌اندازی مجدد"],["stop","توقف"]]){const b=el("button",text);b.type="button";b.onclick=async()=>{try{await foreignCall("/api/foreign/action",{unit:u.unit,action:op});toast("عملیات سرویس شروع شد؛ نتیجه در همین پنل ثبت می‌شود.");}catch(e){toast(e.message);}};buttons.append(b);controls.push(b);}card.append(head,metrics,buttons);view={card,badge,metrics,controls};foreignUnitCards.set(u.unit,view);$("foreign-units").append(card);}view.badge.textContent=u.active?"روشن":u.state;view.badge.className="badge "+(u.active?"good":"bad");view.metrics.textContent="راه‌اندازی مجدد: "+fa(u.restarts)+" · RAM: "+(u.memory===null?"—":bytes(u.memory));view.controls.forEach(b=>b.disabled=busy||!f.available);}
+  for(const u of d.units||[]){let view=foreignUnitCards.get(u.unit);if(!view){const card=el("article",undefined,"setup-block foreign-unit"),head=el("div",undefined,"service-header"),badge=el("span",undefined,"badge");head.append(el("code",u.unit),badge);const metrics=el("p",undefined,"muted"),buttons=el("div",undefined,"foreign-service-buttons");const controls=[];for(const [op,text] of [["start","شروع"],["restart","راه‌اندازی مجدد"],["stop","توقف"]]){const b=el("button",text);b.type="button";b.onclick=async()=>{try{await foreignCall("/api/foreign/action",{unit:u.unit,action:op});toast("عملیات سرویس شروع شد؛ نتیجه در همین پنل ثبت می‌شود.");}catch(e){toast(e.message);}};buttons.append(b);controls.push(b);}card.append(head,metrics,buttons);view={card,badge,metrics,controls};foreignUnitCards.set(u.unit,view);$("foreign-units").append(card);}view.badge.textContent=u.active?"روشن":u.state;view.badge.className="badge "+(u.active?"good":"bad");view.metrics.textContent="راه‌اندازی مجدد: "+fa(u.restarts)+" · RAM: "+(u.memory===null?"—":bytes(u.memory));view.controls.forEach((b,i)=>b.disabled=busy||!f.available||(u.unit==="donino-link.service"&&i===2));}
   const unitIds=new Set((d.units||[]).map(u=>u.unit));for(const [id,v] of foreignUnitCards)if(!unitIds.has(id)){v.card.remove();foreignUnitCards.delete(id);}
   $("counters").textContent=d.metrics?"اتصال‌های پذیرفته‌شدهٔ relay: "+fa(d.metrics.accepted)+" · شمارنده‌های همین سرور":"شمارندهٔ relay هنوز در دسترس نیست.";
   if(!d.metrics)$("traffic-rate").textContent="در انتظار شمارندهٔ واقعی فرآیند";

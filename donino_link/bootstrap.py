@@ -64,7 +64,7 @@ def make_bootstrap(directory,role,address,password,panel_port=None,agent_port=94
     if role not in ('iran','foreign'):raise ValueError('select iran or foreign')
     address=public_address(address);port=integer(panel_port if panel_port is not None else (8090 if role=='iran' else 8091),1024,65535,'panel port')
     agent_port=integer(agent_port,1024,65535,'agent port')
-    if role=='foreign' and port in (agent_port,19090):raise ValueError('panel, pairing and health ports must differ')
+    if role=='foreign' and (port in (agent_port,19090) or agent_port==19090):raise ValueError('panel, pairing and health ports must differ')
     password_record(password)  # Validate before touching managed authentication.
     node=Path(directory);node.mkdir(parents=True,mode=0o700)
     panel={'listen':f'0.0.0.0:{port}','allow_insecure_http':True,**stable_auth(role,password)}
@@ -89,6 +89,7 @@ def install(role,address,password=None,panel_port=None,agent_port=9444,open_ufw=
     if role not in ('iran','foreign'):raise ValueError('select iran or foreign')
     public_address(address)
     existing=load_config(LIVE) if LIVE.exists() else None
+    if role=='foreign':agent_port=read_json('/etc/donino-foreign-agent.json',{}).get('port',agent_port)
     if existing and existing['role']!=role:raise ValueError('this node already has the other role; do not replace it')
     if existing and not upgrade:raise ValueError('Donino is already installed; use --upgrade to preserve its configuration')
     if existing:
@@ -100,9 +101,6 @@ def install(role,address,password=None,panel_port=None,agent_port=9444,open_ufw=
     import grp
     state=Path('/var/lib/donino-link');state.mkdir(mode=0o700,exist_ok=True)
     os.chown(state,__import__('pwd').getpwnam('donino-link').pw_uid,grp.getgrnam('donino-link').gr_gid)
-    if role=='foreign':
-        from .peer import initialize
-        if not Path('/etc/donino-foreign-agent.json').exists():initialize(agent_port)
     with tempfile.TemporaryDirectory(prefix='donino-node-') as tmp:
         node=Path(tmp)/'node'
         if existing:
@@ -111,11 +109,16 @@ def install(role,address,password=None,panel_port=None,agent_port=9444,open_ufw=
                 fresh=make_bootstrap(Path(tmp)/'panel',role,address,password,panel_port,agent_port,open_ufw)
                 existing.update(panel=fresh['panel'],state_db=fresh['state_db']);atomic_json(node/'node.json',existing)
                 manifest=read_json(node/'install.json');port=endpoint(fresh['panel']['listen'])[1]
-                if port in {p['port'] for p in manifest.get('listeners',[])}:raise ValueError('new panel conflicts with a tunnel listener')
+                occupied={p['port'] for p in manifest.get('listeners',[])}|{endpoint(t)[1] for t in existing.get('targets',{}).values()}
+                actual_agent=read_json('/etc/donino-foreign-agent.json',{}).get('port',agent_port)
+                if port in occupied or (role=='foreign' and actual_agent in occupied):raise ValueError('new panel or agent conflicts with a tunnel listener or origin')
                 manifest.setdefault('listeners',[]).append({'protocol':'tcp','port':port})
-                manifest.setdefault('public_ports',{}).setdefault('tcp',[]).extend([port,agent_port])
+                manifest.setdefault('public_ports',{}).setdefault('tcp',[]).extend([port]+([actual_agent] if role=='foreign' else []))
                 atomic_json(node/'install.json',manifest)
         else:make_bootstrap(node,role,address,password,panel_port,agent_port,open_ufw)
+        if role=='foreign':
+            from .peer import initialize
+            if not Path('/etc/donino-foreign-agent.json').exists():initialize(agent_port)
         payload=Path(tmp)/'payload';build_payload(node,payload)
         if allow_private:atomic_json('/etc/donino-control.json',{'allow_private_peers':True})
         subprocess.run(['bash',str(payload/'scripts/install-node.sh'),str(payload)],check=True)

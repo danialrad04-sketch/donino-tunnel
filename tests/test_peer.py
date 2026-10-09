@@ -72,6 +72,7 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_actions_are_fixed_managed_units_and_logged_truthfully(self):
         with self.assertRaises(ValueError):await self.agent.action({'unit':'ssh.service','action':'stop'})
+        with self.assertRaisesRegex(ValueError,'cannot stop itself'):await self.agent.action({'unit':'donino-link.service','action':'stop'})
         with self.assertRaises(ValueError):await self.agent.action({'unit':'donino-link.service','action':'restart','command':'id'})
         with patch('donino_link.peer.subprocess.run',return_value=subprocess.CompletedProcess([],1)) as command:
             result=await self.agent.action({'unit':'donino-link-frp-wss.service','action':'restart'})
@@ -108,7 +109,7 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
         store=Store(self.root/'state.sqlite')
         config=load_config(self.live);config['panel']={};config['state_db']=str(self.root/'state.sqlite')
         stamp=time.time();telemetry={'time':stamp,'config_hash':digest(config['health_key']),'probes':[{'path':'frp-wss','ok':True,'latency_ms':2,'services':{'app':True}}]}
-        units=[{'unit':'donino-link-frp-wss.service','active':True,'state':'active','pid':1}]
+        units=[{'unit':'donino-link-frp-wss.service','active':True,'state':'active','pid':1},{'unit':'donino-link-framed.service','active':True,'state':'active','pid':2}]
         def read(path,default=None):
             if str(path).endswith('install.json'):return {'units':['donino-link-frp-wss.service']}
             if str(path).endswith('peer-observations.json'):return telemetry
@@ -116,6 +117,7 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
         try:
             with patch('donino_link.foreign.read_json',side_effect=read),patch('donino_link.foreign.unit_status',return_value=units),patch('donino_link.foreign.target_status',new=AsyncMock(return_value=True)):
                 monitor=ForeignMonitor(config,store);await monitor.collect();self.assertTrue(monitor.snapshot()['paths'][0]['healthy'])
+                units[1]['active']=False;await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy']);units[1]['active']=True
                 telemetry['time']=stamp-46;await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy']);self.assertEqual(monitor.snapshot()['paths'][0]['observation'],'unknown')
                 telemetry.update(time=stamp,config_hash='wrong');await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy'])
                 telemetry['config_hash']=digest(config['health_key']);units[0].update(active=False,state='inactive');await monitor.collect();self.assertFalse(monitor.snapshot()['paths'][0]['healthy'])
@@ -139,3 +141,22 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp,patch('donino_link.bootstrap.stable_auth'):
             for port in [9444,19090]:
                 with self.assertRaises(ValueError):make_bootstrap(Path(tmp)/str(port),'foreign','198.51.100.20','password-test-123',panel_port=port)
+
+
+class SSHAuthorizationTests(unittest.TestCase):
+    def test_reload_failure_does_not_restore_revoked_key_or_grant_new_key(self):
+        from donino_link.peer import ssh_rules
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);drop=root/'sshd.conf';keys=root/'authorized_keys'
+            subprocess.run(['ssh-keygen','-q','-t','ed25519','-N','','-f',str(root/'identity')],check=True)
+            pub=(root/'identity.pub').read_text().strip()
+            old={'id':'a'*32,'source':'192.0.2.10','public_key':pub,'revoked':False}
+            new={**old,'id':'b'*32}
+            with patch('donino_link.peer.SSH_DROPIN',drop),patch('donino_link.peer.subprocess.run',return_value=subprocess.CompletedProcess([],0)):
+                ssh_rules(root,[old])
+            original_drop=drop.read_text()
+            with patch('donino_link.peer.SSH_DROPIN',drop),patch('donino_link.peer.subprocess.run',side_effect=subprocess.CalledProcessError(1,['systemctl'])):
+                with self.assertRaises(subprocess.CalledProcessError):ssh_rules(root,[{**old,'revoked':True},new])
+            self.assertEqual(keys.read_text().strip(),'')
+            self.assertEqual(drop.read_text(),original_drop)
+            self.assertEqual(keys.stat().st_mode&0o777,0o600)

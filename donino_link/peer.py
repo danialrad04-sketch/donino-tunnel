@@ -247,6 +247,8 @@ class ForeignAgent:
             if body['unit']!='all': raise ValueError('test uses all managed services')
         elif body['unit'] not in units or not re.fullmatch(r'donino-link(?:-[a-z0-9-]+)?\.service',body['unit']):
             raise ValueError('only managed tunnel units can be controlled')
+        if body['unit']=='donino-link.service' and body['action']=='stop':
+            raise ValueError('the panel and health service cannot stop itself; stop the carrier units instead')
         with self.lock:
             if self.action_busy or self.lease(): raise ValueError('node is busy installing or controlling a service')
             self.action_busy=True

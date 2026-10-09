@@ -194,6 +194,14 @@ def main():
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
             assert peer['id'] not in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
             report['pairing_revocation_removes_only_owned_ssh_key']=True
+            for _ in range(30):
+                revoked_status=foreign_api('/api/status')
+                if not revoked_status['telemetry_fresh']:break
+                time.sleep(2)
+            assert not revoked_status['telemetry_fresh'] and all(not path['healthy'] for path in revoked_status['paths'])
+            unknown_ui=subprocess.run(['node',str(BASE/'scripts/test-foreign-ui.cjs')],capture_output=True,text=True,env={**env,'DONINO_EXPECT_UNKNOWN':'1'},timeout=90)
+            if unknown_ui.returncode:raise AssertionError('unknown health UI failed: '+unknown_ui.stderr[-3000:])
+            print(unknown_ui.stdout);report['revoked_peer_health_becomes_unknown']=True
             print(json.dumps(report,ensure_ascii=False))
         finally:
             Path('provision-results.json').write_text(json.dumps(report,indent=2))

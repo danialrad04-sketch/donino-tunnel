@@ -14,6 +14,14 @@ async function main(){
     await outside.locator('#foreign-node').waitFor({state:'visible'});
     if(await outside.locator('#setup').isVisible())throw Error('foreign must have its own role panel');
     await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===6&&document.querySelectorAll('.foreign-unit').length>=7);
+    if(process.env.DONINO_EXPECT_UNKNOWN==='1'){
+      await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===6&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='نامشخص'));
+      await outside.screenshot({path:'ui-role-results/foreign-unknown.png',fullPage:true});
+      if(errors.length)throw Error(JSON.stringify(errors));
+      console.log(JSON.stringify({revoked_peer_no_fresh_health:true,unknown_paths_render:true,js_errors:errors}));
+      if(process.env.DONINO_EMIT_SCREENSHOT==='1')console.log('DONINO_ROLE_SCREENSHOT_foreign-unknown:'+fs.readFileSync('ui-role-results/foreign-unknown.png').toString('base64'));
+      return;
+    }
     await outside.locator('#foreign-test').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-action-history').textContent.includes('موفق'),{},{timeout:45000});
     await outside.locator('#foreign-new-code').click();

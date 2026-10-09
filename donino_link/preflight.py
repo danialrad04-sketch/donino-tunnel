@@ -39,6 +39,14 @@ def check(node):
     rows = subprocess.check_output(['ss', '-H', '-lntup'], text=True, timeout=10)
     occupied = conflicts(rows, install.get('listeners', []), managed_pid)
     if occupied: raise ValueError('ports owned by other services: '+', '.join(occupied))
+    if install['role']=='foreign' and 'panel' in json.loads((node/'node.json').read_text()):
+        settings=Path('/etc/donino-foreign-agent.json')
+        if settings.exists():
+            port=json.loads(settings.read_text())['port']
+            def agent_pid(pid):
+                try:return '/donino-foreign-agent.service' in Path(f'/proc/{pid}/cgroup').read_text()
+                except OSError:return False
+            if conflicts(rows,[{'protocol':'tcp','port':port}],agent_pid):raise ValueError('foreign pairing port is owned by another service')
     if install.get('browser'):
         total = int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemTotal:')))*1024
         if total < 1500*1024*1024: raise ValueError('BrowserLink requires at least 1.5 GiB host RAM')

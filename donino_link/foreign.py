@@ -59,7 +59,8 @@ class ForeignMonitor:
         pids={r['unit']:r['pid'] for r in self.units}
         for name,path in self.paths.items():
             row=probes.get(name);before=path.healthy
-            path.healthy=bool(active.get('donino-link-'+name+'.service') and row and row['ok'] and all(row.get('services',{}).values()))
+            adapter_active=name=='browser-wss' or active.get('donino-link-framed.service',False)
+            path.healthy=bool(active.get('donino-link-'+name+'.service') and adapter_active and row and row['ok'] and all(row.get('services',{}).values()) and all(results))
             path.error='' if path.healthy else ('unit-inactive' if active.get('donino-link-'+name+'.service') is False else 'awaiting-fresh-iran-probe' if not row else 'probe-or-origin-failed')
             path.latency_ms=row.get('latency_ms') if row else None
             if row and telemetry['time']!=self.last_telemetry:path.history.append({'time':telemetry['time'],'ok':path.healthy,'latency':path.latency_ms})

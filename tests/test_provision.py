@@ -35,6 +35,13 @@ class ProvisionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self): await self.client.close();self.tmp.cleanup()
     def spec(self):return {'profile_id':'a'*32,'iran':'192.0.2.10','services':[{'id':'web','listen':'0.0.0.0:443','target':'127.0.0.1:8443'}],'transports':['frp-wss']}
 
+    async def test_paired_profile_management_token_is_never_exposed_in_state(self):
+        private={**self.profile,'agent_token':'private-management-token','agent_fingerprint':'b'*64,'pair_id':'c'*32,'agent_port':9444}
+        atomic_json(self.w.root/'profiles.json',[private])
+        result=await self.client.get('/state');text=json.dumps(await result.json())
+        self.assertNotIn('private-management-token',text);self.assertNotIn('agent_token',text)
+        self.assertEqual(self.w.profile(self.profile['id'])['agent_token'],'private-management-token')
+
     async def test_pin_requires_independently_matching_key(self):
         raw=b'real-host-key';key=base64.b64encode(raw).decode();pin='SHA256:'+base64.b64encode(hashlib.sha256(raw).digest()).decode().rstrip('=')
         self.assertEqual(pinned_line('evil-label ssh-ed25519 '+key,'example.com',2222,pin),'[example.com]:2222 ssh-ed25519 '+key+'\n')
