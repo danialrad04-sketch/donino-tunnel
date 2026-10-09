@@ -132,12 +132,15 @@ class Stream:
                 with contextlib.suppress(OSError,ClientError,asyncio.TimeoutError):await self.session.send(RESET,self.sid)
         finally:
             self.closed=True
-            for worker in workers:worker.cancel()
-            await asyncio.gather(*workers,return_exceptions=True)
-            if self.writer:
-                await close_writer(self.writer)
-            self.session.retire(self.sid)
-            if self.counted:self.session.node.stats.active-=1
+            try:
+                for worker in workers:worker.cancel()
+                await asyncio.gather(*workers,return_exceptions=True)
+            finally:
+                try:
+                    if self.writer:await close_writer(self.writer)
+                finally:
+                    self.session.retire(self.sid)
+                    if self.counted:self.session.node.stats.active-=1
 
 
 class Session:
@@ -188,9 +191,9 @@ class Session:
             with contextlib.suppress(OSError,ClientError,asyncio.TimeoutError):await self.send(RESET,stream.sid)
         finally:
             if self.streams.get(stream.sid) is stream:
-                if stream.writer:
-                    await close_writer(stream.writer)
-                self.retire(stream.sid)
+                try:
+                    if stream.writer:await close_writer(stream.writer)
+                finally:self.retire(stream.sid)
 
     async def receive(self):
         try:
@@ -315,8 +318,8 @@ class MuxNode:
             if stream_task:await stream_task
         except (OSError,ClientError,ValueError,asyncio.TimeoutError):pass
         finally:
-            await close_writer(writer)
-            self.tasks.discard(task)
+            try:await close_writer(writer)
+            finally:self.tasks.discard(task)
 
     async def start(self):
         try:

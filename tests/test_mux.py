@@ -55,7 +55,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         await self.foreign.start();await self.iran.start()
 
     async def asyncTearDown(self):
-        await self.iran.stop();await self.foreign.stop()
+        await asyncio.wait_for(asyncio.gather(self.iran.stop(),self.foreign.stop()),20)
         for server in self.origins:server.close()
         await asyncio.gather(*(s.wait_closed() for s in self.origins))
         for task in self.origin_tasks:task.cancel()
@@ -122,6 +122,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
             await ws.send_bytes(packet(OPEN,1,b'app'));await ws.receive()
             await ws.send_bytes(packet(RESET,1));await asyncio.sleep(.05)
             self.assertTrue(self.foreign.sessions);self.assertTrue(all(not s.streams for s in self.foreign.sessions))
+            self.assertEqual(self.foreign.stats.active,0)
             await ws.send_bytes(packet(OPEN,3,b'health'));self.assertEqual(unpack((await ws.receive()).data),(READY,3,b''))
         finally:await ws.close();await self.http.close()
 
@@ -170,6 +171,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*(s.close() for s in sessions))
         self.assertEqual(await asyncio.wait_for(reader.read(),2),b'')
         await close_writer(writer);await asyncio.sleep(1.1)
+        self.assertEqual(self.iran.stats.active,0);self.assertEqual(self.foreign.stats.active,0)
         self.assertEqual(await self.payload(b'new flow'),b'wolf wen')
         self.assertEqual(self.received.count(b'one attempt'),1)
 
