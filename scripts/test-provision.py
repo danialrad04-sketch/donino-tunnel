@@ -102,12 +102,27 @@ def main():
                 added=execute(node,'ufw','show','added');assert 'Donino-control-'+job['id'] in added;assert 'fixture-existing' in added
             report['owned_ufw_ports']=True
             login()
-            data=os.urandom(2*1024*1024)
-            with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
-                conn.settimeout(30);conn.sendall(data);conn.shutdown(socket.SHUT_WR);result=bytearray()
-                while chunk:=conn.recv(32768):result.extend(chunk)
-            assert hashlib.sha256(result).digest()==hashlib.sha256(data).digest()
-            report['results'].append({'installation':'six-carrier complete','payload_bytes_each_direction':len(data),'half_close':True,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            # The gateway deliberately needs two successful probe rounds before
+            # accepting connections; a single installer probe isn't that state.
+            for _ in range(30):
+                status=api('/api/status')
+                if len(status['paths'])==6 and all(p['healthy'] for p in status['paths']):break
+                time.sleep(2)
+            else:raise AssertionError('gateway did not reach all-path readiness: '+json.dumps(status))
+            payloads=[]
+            for carrier in spec['transports']:
+                api('/api/action',{'action':'prefer','path':carrier})
+                initial=api('/api/status');assert initial['selected']==carrier
+                counters=next(p for p in initial['paths'] if p['id']==carrier)
+                data=os.urandom(2*1024*1024)
+                with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
+                    conn.settimeout(60);conn.sendall(data);conn.shutdown(socket.SHUT_WR);result=bytearray()
+                    while chunk:=conn.recv(32768):result.extend(chunk)
+                assert hashlib.sha256(result).digest()==hashlib.sha256(data).digest(),carrier
+                current=next(p for p in api('/api/status')['paths'] if p['id']==carrier)
+                assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
+                payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
+            report['results'].append({'installation':'six-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
             # Foreign target unavailable must fail in preparation and preserve the
             # successful installation on BOTH nodes, before activation.
             before={node:execute(node,'readlink','-f','/opt/donino-link/current').strip() for node in ['iran','foreign']}
@@ -142,6 +157,7 @@ def main():
             print(json.dumps(report,ensure_ascii=False))
         finally:
             Path('provision-results.json').write_text(json.dumps(report,indent=2))
+            print('FIXTURE REPORT: '+json.dumps(report,ensure_ascii=False))
             for node in ['iran','foreign']:
                 try:
                     logs=execute(node,'journalctl','--no-pager','-n','250','-u','donino-control','-u','donino-link','-u','donino-link-browser-wss')
