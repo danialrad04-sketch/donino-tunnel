@@ -157,11 +157,16 @@ def main():
             foreign_login()
             for _ in range(30):
                 foreign_status=foreign_api('/api/status')
-                if foreign_status['telemetry_fresh'] and len(foreign_status['paths'])==6 and all(path['healthy'] for path in foreign_status['paths']) and foreign_status['metrics']:break
+                counters=foreign_status.get('metrics')
+                # Relays publish once/second and the monitor samples every five
+                # seconds. Require the payload's completed counters, not merely
+                # an earlier (valid but smaller) process snapshot.
+                if foreign_status['telemetry_fresh'] and len(foreign_status['paths'])==6 and all(path['healthy'] for path in foreign_status['paths']) and counters and counters['bytes_up']>=6*len(data) and counters['bytes_down']>=6*len(data):break
                 time.sleep(2)
             else:raise AssertionError('foreign panel did not observe real signed probes and metrics: '+json.dumps(foreign_status))
             assert foreign_status['metrics']['bytes_up']>=6*len(data) and foreign_status['metrics']['bytes_down']>=6*len(data)
             report['foreign_signed_health_and_local_traffic_counters']=True
+            report['foreign_traffic_counters']={k:foreign_status['metrics'][k] for k in ['bytes_up','bytes_down']}
             # Native browser against BOTH actual role panels, without API mocks.
             env={**os.environ,'DONINO_IRAN_URL':base,'DONINO_FOREIGN_URL':foreign_base}
             ui=subprocess.run(['node',str(BASE/'scripts/test-foreign-ui.cjs')],capture_output=True,text=True,env=env,timeout=180)
