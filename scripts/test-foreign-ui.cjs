@@ -53,6 +53,13 @@ async function main(){
     await iran.goto(process.env.DONINO_IRAN_URL);
     await iran.locator('#password').fill('systemd-fixture-password-123');await iran.locator('#login-form button').click();
     await iran.locator('#setup').waitFor({state:'visible'});await iran.locator('#setup-details summary').first().click();
+    await iran.locator('#adaptive').click();
+    await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='true');
+    await iran.reload();
+    await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='true'&&document.querySelector('#path-list').textContent.includes('هزینهٔ مسیر'));
+    await iran.locator('#adaptive').click();
+    await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='false');
+    await iran.locator('#setup-details summary').first().click();
     await iran.waitForFunction(()=>document.querySelector('#setup-profile').options.length>=2&&document.querySelector('#setup-iran').value.length>0);
     if(await iran.locator('#foreign-node').isVisible()||!await iran.locator('#connection-code').isVisible()||await iran.locator('#connection-pin').isVisible())throw Error('wrong Iran pairing flow');
     await iran.locator('#setup').screenshot({path:'ui-role-results/iran-setup.png'});
@@ -60,7 +67,7 @@ async function main(){
     await iran.locator('#setup').screenshot({path:'ui-role-results/iran-setup-mobile.png'});
     const iranOverflow=await iran.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     if(errors.length||foreignOverflow||iranOverflow)throw Error(JSON.stringify({errors,foreignOverflow,iranOverflow}));
-    console.log(JSON.stringify({real_role_panels:true,foreign_actual_health_test:true,foreign_code_generation:true,foreign_stop_start_actual_quic:true,prevent_panel_self_stop:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
+    console.log(JSON.stringify({real_role_panels:true,adaptive_toggle_and_reload_persistence:true,foreign_actual_health_test:true,foreign_code_generation:true,foreign_stop_start_actual_quic:true,prevent_panel_self_stop:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
     if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['foreign-desktop','foreign-dark','foreign-mobile','iran-setup','iran-setup-mobile'])console.log('DONINO_ROLE_SCREENSHOT_'+name+':'+fs.readFileSync('ui-role-results/'+name+'.png').toString('base64'));
   }catch(error){
     if(outside)console.error('ROLE UI DIAGNOSTICS: '+JSON.stringify({errors,dom:await outside.evaluate(()=>({labels:[...document.querySelectorAll('.path-status')].map(e=>e.textContent),notice:document.querySelector('#notice').textContent,live:document.querySelector('#live').textContent})),status:await outside.evaluate(async()=>{const d=await (await fetch('/api/status')).json();return {role:d.role,telemetry_fresh:d.telemetry_fresh,paths:d.paths?.map(p=>({id:p.id,healthy:p.healthy,observation:p.observation}))};})}));

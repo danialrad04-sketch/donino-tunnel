@@ -156,6 +156,18 @@ def main():
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
             report['results'].append({'installation':'six-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            api('/api/action',{'action':'auto'});api('/api/action',{'action':'adaptive'})
+            initial=api('/api/status');assert initial['routing_strategy']=='adaptive' and initial['selected']
+            adaptive_data=os.urandom(1024*1024)
+            with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
+                conn.settimeout(60);conn.sendall(adaptive_data);conn.shutdown(socket.SHUT_WR);result=bytearray()
+                while chunk:=conn.recv(32768):result.extend(chunk)
+            assert hashlib.sha256(result).digest()==hashlib.sha256(adaptive_data).digest()
+            after_adaptive=api('/api/status')
+            for key in ['bytes_up','bytes_down']:
+                assert sum(p[key] for p in after_adaptive['paths'])-sum(p[key] for p in initial['paths'])==len(adaptive_data)
+            report['adaptive_actual_payload']={'payload_bytes_each_direction':len(adaptive_data),'sha256_match':True,'half_close':True,'real_counters_match':True}
+            api('/api/action',{'action':'static'})
             foreign_login()
             for _ in range(30):
                 foreign_status=foreign_api('/api/status')

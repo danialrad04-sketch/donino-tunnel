@@ -140,6 +140,22 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await asyncio.wait_for(r.read(),1),b'HALF CLOSE')
         w.close();await w.wait_closed()
 
+    async def test_adaptive_fallback_preserves_single_payload_and_eof(self):
+        received=[]
+        async def after_eof(reader,writer):
+            data=await reader.read();received.append(data);writer.write(data[::-1]);await writer.drain();writer.close()
+        address=await self.listen(after_eof)
+        self.gateway.paths['primary'].config['backends']['echo']='127.0.0.1:1'
+        self.gateway.paths['backup'].config['backends']['echo']=address
+        import time
+        for p in self.gateway.paths.values():p.healthy=True;p.quality.probe(10,time.monotonic())
+        self.gateway.action('primary','prefer');self.gateway.action(None,'adaptive')
+        r,w=await asyncio.open_connection(*await self.gateway_address())
+        payload=b'adaptive-no-replay'*10000;w.write(payload);await w.drain();w.write_eof()
+        self.assertEqual(await asyncio.wait_for(r.read(),3),payload[::-1]);self.assertEqual(received,[payload])
+        self.assertFalse(self.gateway.paths['primary'].healthy)
+        w.close();await w.wait_closed()
+
     async def test_drain_keeps_existing_connection(self):
         async def echo(r,w):
             while data:=await r.read(100):w.write(data);await w.drain()

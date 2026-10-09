@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from .config import endpoint
 from .health import probe, host_stats
+from .adaptive import Quality, AdaptiveRouter
 
 
 @dataclass
@@ -21,6 +22,7 @@ class PathState:
     bytes_up: int = 0
     bytes_down: int = 0
     history: deque = field(default_factory=lambda: deque(maxlen=120))
+    quality: Quality = field(default_factory=Quality)
 
     def snapshot(self):
         return dict(id=self.config["id"], transport=self.config.get("transport", "external"),
@@ -41,15 +43,21 @@ class Gateway:
         self.started = time.time()
         self.last_path = None
         self.policy = config["policy"]
+        self.adaptive = store.get('adaptive',False) is True
+        self.router = AdaptiveRouter(self.policy)
 
     def candidates(self, service=None):
         paths = [p for p in self.paths.values() if p.mode == "enabled" and p.healthy and
                  (service is None or p.remote.get('services',{}).get(service,True))]
+        if self.adaptive:return self.router.rank(paths,service,self.preferred)
         return sorted(paths, key=lambda p: (p.config["id"] != self.preferred,
                       p.config.get("priority",100), (p.latency_ms or 0) + p.active*0.2))
 
     def action(self, path_id, action):
-        if action in ("pause", "resume") and path_id is None:
+        if action in ('adaptive','static') and path_id is None:
+            self.adaptive=action=='adaptive';self.store.set('adaptive',self.adaptive)
+            self.router.leaders.clear()
+        elif action in ("pause", "resume") and path_id is None:
             self.paused = action == "pause"
             self.store.set("paused", self.paused)
         elif action == "auto" and path_id is None:
@@ -73,6 +81,7 @@ class Gateway:
         before = path.healthy
         try:
             latency,remote = await probe(path.config["health"],self.config["health_key"],self.policy["probe_timeout"])
+            path.quality.probe(latency,time.monotonic())
             path.latency_ms = latency if path.latency_ms is None else 0.3*latency + 0.7*path.latency_ms
             path.remote = remote
             path.successes += 1
@@ -82,6 +91,7 @@ class Gateway:
                 path.healthy = True
             path.history.append({"time":time.time(), "latency":round(latency,2), "ok":True})
         except (OSError, ValueError, KeyError, TypeError, asyncio.TimeoutError) as e:
+            path.quality.probe(None,time.monotonic())
             path.failures += 1
             path.successes = 0
             path.error = type(e).__name__
@@ -144,12 +154,14 @@ class Gateway:
                     path.healthy = False
                     path.successes = 0
                     path.error = "backend-connect-failed"
+                    path.quality.probe(None,time.monotonic())
                     self.store.event("backend-connect-failed", {"path":path.config["id"], "service":service["id"]})
             if chosen is None:
                 self.rejected += 1
                 return
             self.accepted += 1
             chosen.active += 1
+            self.router.selected(service['id'],chosen)
             name = chosen.config["id"]
             if self.last_path and self.last_path != name:
                 self.failovers += 1
@@ -161,7 +173,9 @@ class Gateway:
                 while chunk := await source.read(65536):
                     activity[0] = time.monotonic()
                     destination.write(chunk)
+                    drained_at=time.monotonic()
                     await destination.drain()
+                    if direction=='up':chosen.quality.drain(time.monotonic()-drained_at,time.monotonic())
                     if direction == "up":
                         chosen.bytes_up += len(chunk)
                     else:
@@ -205,9 +219,15 @@ class Gateway:
             self.connections.discard(task)
 
     def snapshot(self):
+        service=self.config['services'][0]['id'] if self.config['services'] else None
+        candidates=self.candidates(service)
+        paths=[]
+        for p in self.paths.values():
+            row=p.snapshot();row['quality']=self.router.details(p);paths.append(row)
         return {"version":"0.1.0", "role":"iran","bootstrap":self.config.get('bootstrap',False),"public_address":self.config.get('public_address'), "time":time.time(), "uptime":time.time()-self.started,
                 "paused":self.paused, "preferred":self.preferred, "active":self.active,
                 "accepted":self.accepted, "rejected":self.rejected,"route_changes":self.failovers,
-                "selected":self.candidates()[0].config["id"] if self.candidates() else None,
-                "host":host_stats(), "paths":[p.snapshot() for p in self.paths.values()],
+                "selected":candidates[0].config["id"] if candidates else None,
+                "routing_strategy":'adaptive' if self.adaptive else 'static',
+                "host":host_stats(), "paths":paths,
                 "services":self.config["services"], "events":self.store.events()}

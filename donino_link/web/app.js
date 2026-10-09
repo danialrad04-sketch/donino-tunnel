@@ -15,13 +15,14 @@ function loggedIn(){ $("login").hidden=true; $("dashboard").hidden=false; refres
 function notice(text){ $("notice").textContent=text; $("notice").hidden=!text; }
 function toast(text){$("toast").textContent=text;$("toast").hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").hidden=true,4500);}
 async function action(path,name){
-  if(actionPending)return;actionPending=true;$("auto").disabled=true;$("pause").disabled=true;
-  try{await api("/api/action",{path,action:name});await refresh();toast("تنظیم مسیر به‌روز شد.");}catch(e){toast(e.message);}finally{actionPending=false;$("auto").disabled=false;$("pause").disabled=false;}
+  if(actionPending)return;actionPending=true;$("auto").disabled=true;$("pause").disabled=true;$("adaptive").disabled=true;
+  try{await api("/api/action",{path,action:name});await refresh();toast("تنظیم مسیر به‌روز شد.");}catch(e){toast(e.message);}finally{actionPending=false;$("auto").disabled=false;$("pause").disabled=false;$("adaptive").disabled=false;}
 }
 $("login-form").addEventListener("submit",async e=>{e.preventDefault();$("login-error").textContent=""; const b=e.target.querySelector("button");b.disabled=true;try{const d=await api("/api/login",{password:$("password").value});csrf=d.csrf;$("password").value="";loggedIn();}catch(e){$("login-error").textContent=e.message;}finally{b.disabled=false;}});
 $("logout").onclick=async()=>{try{await api("/api/logout",{});loggedOut();}catch(e){toast(e.message);}};
 $("mobile-logout").onclick=$("logout").onclick;
 $("auto").onclick=()=>action(null,"auto");
+$("adaptive").onclick=()=>action(null,state?.routing_strategy==="adaptive"?"static":"adaptive");
 $("pause").onclick=()=>action(null,state?.paused?"resume":"pause");
 $("export").onclick=()=>{window.location.href="/api/export";};
 $("refresh").onclick=()=>refresh();
@@ -47,7 +48,8 @@ function render(d){
   $("traffic").textContent=total===null?"—":bytes(total);
   if(total!==null&&previousTraffic&&d.time>previousTraffic.time&&total>=previousTraffic.total){$("traffic-rate").textContent="نرخ مجموع دو جهت: "+bytes((total-previousTraffic.total)/(d.time-previousTraffic.time))+"/s";}
   previousTraffic=total===null?null:{time:d.time,total};
-  $("routing-mode").textContent=d.preferred?"مسیر ترجیحی":"انتخاب خودکار";
+  $("routing-mode").textContent=d.preferred?"مسیر ترجیحی":d.routing_strategy==="adaptive"?"هستهٔ تطبیقی":"انتخاب خودکار";
+  $("adaptive").textContent=d.routing_strategy==="adaptive"?"بازگشت به اولویت ثابت":"فعال‌کردن هستهٔ تطبیقی";$("adaptive").setAttribute("aria-pressed",String(d.routing_strategy==="adaptive"));
   $("path-summary").textContent=fa(d.paths.length)+" مسیر · "+fa(healthy.length)+" سالم و فعال";
   $("pause").textContent=d.paused?"ادامهٔ اتصال‌های جدید":"توقف اتصال‌های جدید";
   $("live").textContent="به‌روز · "+new Date(d.time*1000).toLocaleTimeString("fa-IR");$("live").className="badge good";
@@ -61,6 +63,7 @@ function render(d){
     const metrics=card.querySelector(".path-metrics");
     (foreign?[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","آزمون از ایران"],[d.units.find(u=>u.unit==="donino-link-"+p.id+".service")?.active?"روشن":"خاموش","سرویس محلی"],[p.observation==="fresh"?"تازه":"نامشخص","شاهد ارتباط"]]:[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","تأخیر"],[fa(p.active),"اتصال فعال"],[bytes(p.bytes_up+p.bytes_down),"ترافیک"]]).forEach(([v,l])=>{const n=el("div");n.append(el("b",v),el("span",l));metrics.append(n);});
     card.querySelector(".mode").textContent=modeNames[p.mode];
+    if(!foreign&&d.routing_strategy==="adaptive"&&p.quality)card.append(el("p","هزینهٔ مسیر: "+fa(p.quality.cost)+" · کمتر بهتر است","field-help"));
     const menu=card.querySelector("select");menu.hidden=foreign;if(foreign)card.querySelector(".mode").textContent="پایش از پنل ایران";menu.onchange=()=>{if(menu.value)action(p.id,menu.value);};
     return card;
   });if(document.activeElement?.tagName!=="SELECT")$("path-list").replaceChildren(...cards);
@@ -87,7 +90,7 @@ function render(d){
 }
 function eventDescription(e){
   const d=e.detail||{};
-  if(e.kind==="operator")return ({prefer:"مسیر ترجیحی",enable:"فعال‌کردن مسیر",disable:"غیرفعال‌کردن مسیر",drain:"تخلیهٔ مسیر",pause:"توقف ورودی جدید",resume:"ادامهٔ ورودی جدید",auto:"بازگشت به انتخاب خودکار"}[d.action]||"تغییر تنظیمات")+(d.path?" · "+d.path:"");
+  if(e.kind==="operator")return ({prefer:"مسیر ترجیحی",enable:"فعال‌کردن مسیر",disable:"غیرفعال‌کردن مسیر",drain:"تخلیهٔ مسیر",pause:"توقف ورودی جدید",resume:"ادامهٔ ورودی جدید",auto:"بازگشت به انتخاب خودکار",adaptive:"فعال‌کردن هستهٔ تطبیقی",static:"بازگشت به اولویت ثابت"}[d.action]||"تغییر تنظیمات")+(d.path?" · "+d.path:"");
   if(e.kind==="route-change")return (d.from||"—")+" ← "+(d.to||"—");
   if(e.kind==="path-health")return (d.path||"مسیر")+" · "+(d.healthy?"پاسخ معتبر دریافت شد":"آزمون سلامت ناموفق");
   if(e.kind==="login")return "ورود به مرکز فرمان";
@@ -166,7 +169,7 @@ const foreignUnitCards=new Map();
 function configureRole(foreign){
   const role=foreign?"foreign":"iran";if(displayedRole===role)return;displayedRole=role;
   $("setup").hidden=foreign;$("foreign-node").hidden=!foreign;$("nav-setup").hidden=foreign;$("nav-foreign").hidden=!foreign;
-  $("auto").hidden=foreign;$("pause").hidden=foreign;
+  $("auto").hidden=foreign;$("adaptive").hidden=foreign;$("pause").hidden=foreign;
   document.querySelector("header h1").firstChild.textContent=foreign?"مرکز مدیریت خارج":"مرکز فرمان ارتباط";
   document.querySelector("header p").textContent=foreign?"سرور خروج، سرویس مقصد و اتصال تأییدشده به ایران.":"هر مسیر، هر اتصال؛ یک تصویر روشن.";
   document.querySelector("#overview .eyebrow").textContent=foreign?"پایش ارتباط دو سرور":"مسیر انتخاب‌شده برای اتصال‌های جدید";
