@@ -19,17 +19,34 @@ config=/etc/donino-link/current/node.json
 args=(panel-access --config "$config" --listen "0.0.0.0:$port" --http)
 [[ -n "$host" ]] && args+=(--public-host "$host")
 "$cli" "${args[@]}"
-if ! systemctl restart donino-link.service || ! systemctl is-active --quiet donino-link.service; then
+panel_ready() {
+  /opt/donino-link/current/venv/bin/python - "$port" <<'PY'
+import sys, time, urllib.request
+url = f'http://127.0.0.1:{sys.argv[1]}/healthz'
+for attempt in range(10):
+    try:
+        with urllib.request.urlopen(url, timeout=2) as response:
+            if response.status == 200:
+                print(response.read().decode())
+                sys.exit(0)
+    except (OSError, ValueError):
+        pass
+    time.sleep(0.5)
+sys.exit('Panel health check failed.')
+PY
+}
+if ! systemctl restart donino-link.service || ! systemctl is-active --quiet donino-link.service || ! panel_ready; then
   echo 'Panel activation failed; restoring previous configuration.' >&2
   cp -p -- "$config.panel-backup" "$config"
   chown root:donino-link "$config";chmod 0640 "$config"
   systemctl restart donino-link.service || true
   exit 1
 fi
-/opt/donino-link/current/venv/bin/python -c 'import sys,urllib.request; print(urllib.request.urlopen(sys.argv[1],timeout=10).read().decode())' "http://127.0.0.1:$port/healthz"
 echo
 if [[ -n "$host" ]]; then
-  echo "Panel URL: http://$host:$port"
+  url_host=$host
+  [[ "$host" == *:* && "$host" != \[*\] ]] && url_host="[$host]"
+  echo "Panel URL: http://$url_host:$port"
 else
   echo "Panel listens on HTTP port $port. Use your actual server IP/domain in the browser."
 fi

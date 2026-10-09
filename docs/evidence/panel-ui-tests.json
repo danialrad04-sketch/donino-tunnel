@@ -1,12 +1,21 @@
 {
-  "commit": "7e9a2a7d4a42a298b918c8562433cc7540168557",
-  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37946624898",
+  "commit": "36dc925383f326c401a91693de90429d9f59a93c",
+  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37949986875",
   "login": true,
   "pause_resume": true,
   "prefer": true,
   "mobile_logout": true,
+  "dark_light_theme_persists": true,
+  "manual_refresh": true,
   "js_errors": [],
   "horizontal_overflow": false,
-  "screenshot_commit": "a2fe4c2784b7bc277422d6ceba10d8f05fb3be3a",
-  "screenshot_scope": "Real engine fixture on GitHub runner; same panel source; no actual Iran nodes"
+  "screenshots": [
+    "panel-desktop.png",
+    "panel-mobile.png",
+    "panel-dark.png",
+    "panel-login.png"
+  ],
+  "screenshot_scope": "Real engine fixture on GitHub runner; no actual Iran nodes",
+  "visual_review": "Desktop, mobile, dark theme and login reviewed",
+  "public_http_deployed": false
 }

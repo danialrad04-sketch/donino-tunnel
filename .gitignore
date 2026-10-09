@@ -10,6 +10,7 @@ plans/
 *.csr
 *.srl
 node.json
+*.panel-backup
 admin.json
 api-token
 *.sqlite3*
