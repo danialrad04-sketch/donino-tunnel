@@ -82,7 +82,7 @@ def main():
             for _ in range(900):
                 try:
                     state=api('/api/provision/state');job=next(j for j in state['jobs'] if j['id']==original_job)
-                    if job['status']!='running':break
+                    if job['status']!='running' and not state['busy']:break
                 except urllib.error.HTTPError as e:
                     if e.code==401:login();lost_panel=True
                     else:raise
@@ -114,8 +114,8 @@ def main():
             bad={**spec,'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18999'}]}
             p=api('/api/provision/preview',bad);failed=api('/api/provision/start',{'plan_id':p['id'],'confirm_replace':True})
             for _ in range(150):
-                row=next(j for j in api('/api/provision/state')['jobs'] if j['id']==failed['id'])
-                if row['status']!='running':break
+                state=api('/api/provision/state');row=next(j for j in state['jobs'] if j['id']==failed['id'])
+                if row['status']!='running' and not state['busy']:break
                 time.sleep(2)
             assert row['status']=='failed',json.dumps(row)
             assert not row['activated']
@@ -126,8 +126,8 @@ def main():
             p=api('/api/provision/preview',blocked);failed=api('/api/provision/start',{'plan_id':p['id'],'confirm_replace':True})
             for _ in range(180):
                 try:
-                    row=next(j for j in api('/api/provision/state')['jobs'] if j['id']==failed['id'])
-                    if row['status']!='running':break
+                    state=api('/api/provision/state');row=next(j for j in state['jobs'] if j['id']==failed['id'])
+                    if row['status']!='running' and not state['busy']:break
                 except urllib.error.HTTPError as error:
                     if error.code==401:login()
                     else:raise
