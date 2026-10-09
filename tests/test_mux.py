@@ -6,9 +6,10 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
-from aiohttp import ClientSession,WSMsgType,ClientError
+from aiohttp import ClientSession,ClientTimeout,WSMsgType,ClientError
 from donino_link.mux import MuxNode,Session,Stream,packet,unpack,tls_context,HELLO,OPEN,READY,DATA,UPDATE,FIN,RESET,GREETING,PROTOCOL,HEADER,CREDIT,CHUNK,WINDOW,SLOTS
 from donino_link.plan import make_certs
+from donino_link.mux import close_writer
 
 
 def port():
@@ -65,7 +66,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         try:
             writer.write(data);await writer.drain();writer.write_eof()
             return await asyncio.wait_for(reader.read(),15)
-        finally:writer.close();await writer.wait_closed()
+        finally:await close_writer(writer)
 
     async def test_concurrent_multimegabyte_payloads_halfclose_and_session_reuse(self):
         payloads=[os.urandom(1024*1024) for _ in range(8)]
@@ -84,7 +85,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
     async def test_mutual_tls_is_required_before_websocket(self):
         import ssl
         ctx=ssl.create_default_context(cafile=str(self.ca/'ca.crt'));ctx.minimum_version=ssl.TLSVersion.TLSv1_3
-        async with ClientSession() as client:
+        async with ClientSession(timeout=ClientTimeout(total=5)) as client:
             with self.assertRaises((ClientError,OSError,asyncio.TimeoutError)):
                 await client.ws_connect(self.iran.config['url'],ssl=ctx,protocols=[PROTOCOL])
         self.assertFalse(self.foreign.sessions)
@@ -95,7 +96,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.received,[])
 
     async def raw(self):
-        self.http=ClientSession();ws=await self.http.ws_connect(self.iran.config['url'],ssl=tls_context(self.iran.config),protocols=[PROTOCOL])
+        self.http=ClientSession(timeout=ClientTimeout(total=5));ws=await self.http.ws_connect(self.iran.config['url'],ssl=tls_context(self.iran.config),protocols=[PROTOCOL])
         await ws.send_bytes(packet(HELLO,0,GREETING));first=await ws.receive();self.assertEqual(unpack(first.data),(HELLO,0,GREETING))
         return ws
 
@@ -168,7 +169,7 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
         sessions=list(self.foreign.sessions);self.assertTrue(sessions)
         await asyncio.gather(*(s.close() for s in sessions))
         self.assertEqual(await asyncio.wait_for(reader.read(),2),b'')
-        writer.close();await writer.wait_closed();await asyncio.sleep(1.1)
+        await close_writer(writer);await asyncio.sleep(1.1)
         self.assertEqual(await self.payload(b'new flow'),b'wolf wen')
         self.assertEqual(self.received.count(b'one attempt'),1)
 
@@ -198,8 +199,8 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
             fast=await asyncio.start_server(fast_accept,'127.0.0.1',0);self.origins.append(fast)
             self.assertEqual(await asyncio.wait_for(self.payload(b'fast',fast.sockets[0].getsockname()[1]),2),b'tsaf')
         finally:
-            gate.set();producer.cancel();await asyncio.gather(producer,return_exceptions=True);writer.close()
-            with contextlib.suppress(OSError):await writer.wait_closed()
+            gate.set();producer.cancel();await asyncio.gather(producer,return_exceptions=True)
+            await close_writer(writer)
 
     async def fill(self,writer):
         for _ in range(1024):writer.write(b'x'*CHUNK);await writer.drain()

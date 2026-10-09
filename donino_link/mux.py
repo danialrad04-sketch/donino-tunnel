@@ -63,6 +63,15 @@ def tls_context(config,server=False):
     return ctx
 
 
+async def close_writer(writer,timeout=5):
+    """Do not keep a retired stream alive when a TCP peer stops reading."""
+    writer.close()
+    try:await asyncio.wait_for(writer.wait_closed(),timeout)
+    except (OSError,asyncio.TimeoutError):writer.transport.abort()
+    except asyncio.CancelledError:
+        writer.transport.abort();raise
+
+
 class Stream:
     def __init__(self,session,sid,service,reader=None,writer=None):
         self.session,self.sid,self.service=session,sid,service
@@ -126,8 +135,7 @@ class Stream:
             for worker in workers:worker.cancel()
             await asyncio.gather(*workers,return_exceptions=True)
             if self.writer:
-                self.writer.close()
-                with contextlib.suppress(OSError):await self.writer.wait_closed()
+                await close_writer(self.writer)
             self.session.retire(self.sid)
             if self.counted:self.session.node.stats.active-=1
 
@@ -181,8 +189,7 @@ class Session:
         finally:
             if self.streams.get(stream.sid) is stream:
                 if stream.writer:
-                    stream.writer.close()
-                    with contextlib.suppress(OSError):await stream.writer.wait_closed()
+                    await close_writer(stream.writer)
                 self.retire(stream.sid)
 
     async def receive(self):
@@ -308,8 +315,7 @@ class MuxNode:
             if stream_task:await stream_task
         except (OSError,ClientError,ValueError,asyncio.TimeoutError):pass
         finally:
-            writer.close()
-            with contextlib.suppress(OSError):await writer.wait_closed()
+            await close_writer(writer)
             self.tasks.discard(task)
 
     async def start(self):

@@ -91,7 +91,10 @@ def main():
             assert api('/api/status')['bootstrap'] and not api('/api/status')['paths']
             assert foreign_api('/api/status')['role']=='foreign'
             code=foreign_api('/api/foreign/code',{})
-            p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
+            try:p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
+            except urllib.error.HTTPError as error:
+                reason=json.loads(error.read()).get('error','unknown pairing failure')
+                raise AssertionError('fixture pairing failed: '+reason) from error
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
             assert 'restrict ssh-ed25519' in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
             assert 'agent_token' not in json.dumps(api('/api/provision/state'))
