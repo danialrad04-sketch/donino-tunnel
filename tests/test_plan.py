@@ -77,6 +77,15 @@ class PlanTests(unittest.TestCase):
         self.assertNotEqual(old,renewed['spki'])
         self.assertEqual(iran['token'],renewed['token'])
 
+    def test_public_browser_443_is_independent_of_iran_443(self):
+        plan=self.root/'browser-public-plan'
+        summary=make_plan(plan,'192.0.2.10','outside.example',self.services,['frp-wss','browser-wss'],'private-test-password',True,browser_port=443)
+        self.assertEqual(summary['firewall']['foreign']['tcp'],[443])
+        iran=json.loads((plan/'iran/transports/browser-wss.json').read_text())
+        self.assertEqual(iran['origin'],'https://outside.example')
+        with self.assertRaises(ValueError):
+            make_plan(self.root/'port-conflict','192.0.2.10','outside.example',self.services,['browser-wss'],'private-test-password',True,browser_port=8443)
+
     def test_packaged_metadata_is_current(self):
         root=Path(__file__).resolve().parent.parent
         self.assertEqual((root/'pyproject.toml').read_bytes(),(root/'donino_link/resources/pyproject.toml').read_bytes())

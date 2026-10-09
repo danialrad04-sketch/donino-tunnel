@@ -16,6 +16,7 @@ from donino_link.health import start_responder,probe
 from donino_link.tlsfront import TLSFront
 from donino_link.gateway import Gateway
 from donino_link.store import Store
+from donino_link.framed import FramedRelay
 from donino_link.artifacts import install_engines
 
 
@@ -49,17 +50,21 @@ async def test(binary_dir, output, serve_panel=False):
         async def echo(reader,writer):
             task=asyncio.current_task();echo_tasks.add(task)
             try:
-                while data:=await reader.read(65536):writer.write(data);await writer.drain()
+                # Wait for EOF before responding: carriers must preserve the
+                # logical half-close, not merely echo a still-open stream.
+                data=await reader.read()
+                writer.write(data);await writer.drain()
             except OSError:pass
             finally:writer.close();await writer.wait_closed();echo_tasks.discard(task)
         echo_server=await asyncio.start_server(echo,'127.0.0.1',19991)
         health=await start_responder('127.0.0.1:19992',key,{'echo':'127.0.0.1:19991'})
+        relays=[FramedRelay(json.loads((plan/role/"transports/framed.json").read_text())) for role in ["iran","foreign"]]
         results={}
         start=time.monotonic()
         async def transfer(address,size=2*1024*1024):
             reader,writer=await asyncio.open_connection('127.0.0.1',address)
             payload=os.urandom(size)
-            async def send():writer.write(payload);await writer.drain()
+            async def send():writer.write(payload);await writer.drain();writer.write_eof()
             sending=asyncio.create_task(send())
             try:
                 response=await asyncio.wait_for(reader.readexactly(size),15)
@@ -70,6 +75,7 @@ async def test(binary_dir, output, serve_panel=False):
                 sending.cancel();await asyncio.gather(sending,return_exceptions=True)
                 writer.close();await writer.wait_closed()
         try:
+            for relay in relays:await relay.start()
             await front.start()
             # A correct server CA without a client certificate is insufficient.
             no_client=ssl.create_default_context(cafile=str(plan/'iran/certs/ca.crt'))
@@ -104,8 +110,8 @@ async def test(binary_dir, output, serve_panel=False):
                         break
                     except (OSError,ValueError,asyncio.TimeoutError):pass
                 else:raise AssertionError(t+' did not pass authenticated probe')
-                transferred=await transfer(32000+i*100)
-                results[t]={'probe_ms':round(ms,3),'bytes_echoed':transferred,'binary_payload_sha256_match':True}
+                transferred=await transfer(32060+i*100)
+                results[t]={'probe_ms':round(ms,3),'bytes_echoed':transferred,'binary_payload_sha256_match':True,'half_close_preserved':True,'response_after_upload_eof':True}
                 print(t,'PASS',flush=True)
             await gateway.start()
             for _ in range(30):
@@ -146,6 +152,7 @@ async def test(binary_dir, output, serve_panel=False):
             raise
         finally:
             await gateway.stop();store.close()
+            for relay in relays:await relay.stop()
             await front.stop()
             for _,_,pr in processes:
                 if pr.poll() is None:pr.terminate()

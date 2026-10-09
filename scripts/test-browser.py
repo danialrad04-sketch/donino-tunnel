@@ -17,6 +17,7 @@ from donino_link.browser import BrowserClient, BrowserServer
 from donino_link.artifacts import install_engines
 from donino_link.gateway import Gateway
 from donino_link.store import Store
+from donino_link.framed import FramedRelay
 from donino_link.plan import make_plan
 from donino_link.health import start_responder, probe
 
@@ -37,6 +38,7 @@ async def test(chromium, output, root_fixture, binary_dir=None):
         gateway_config['state_db']=str(root/'state.sqlite3')
         gateway_config['policy'].update(probe_interval=.2,probe_timeout=1,failures=2,recoveries=2)
         store=Store(gateway_config['state_db']);gateway=Gateway(gateway_config,store)
+        relays=[FramedRelay(json.loads((plan/role/"transports/framed.json").read_text())) for role in ["iran","foreign"]]
         engines=[]
         configs={}
         for role in ['iran','foreign']:
@@ -53,17 +55,26 @@ async def test(chromium, output, root_fixture, binary_dir=None):
             try:
                 while b:=await r.read(65536):w.write(b);await w.drain()
                 w.write_eof()
-            finally:w.close();await w.wait_closed();tasks.discard(task)
+            except OSError:pass
+            finally:
+                w.close()
+                with contextlib.suppress(OSError):await w.wait_closed()
+                tasks.discard(task)
         async def delayed(r,w):
             task=asyncio.current_task();tasks.add(task)
             try:
                 payload=await r.read();await asyncio.sleep(.05);w.write(hashlib.sha256(payload).digest());await w.drain();w.write_eof()
-            finally:w.close();await w.wait_closed();tasks.discard(task)
+            except OSError:pass
+            finally:
+                w.close()
+                with contextlib.suppress(OSError):await w.wait_closed()
+                tasks.discard(task)
         echo_server=await asyncio.start_server(echo,'127.0.0.1',20191)
         delayed_server=await asyncio.start_server(delayed,'127.0.0.1',20194)
         key=json.loads((plan/'iran/node.json').read_text())['health_key']
         health=await start_responder('127.0.0.1:20192',key,{'echo':'127.0.0.1:20191'})
         try:
+            for relay in relays:await relay.start()
             for role in ['iran','foreign']:
                 binary='frps' if role=='iran' else 'frpc'
                 engines.append(await asyncio.create_subprocess_exec(str(binaries/binary),'-c',str(plan/role/'transports/frp-quic.toml'),stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,env=engine_env))
@@ -131,6 +142,7 @@ async def test(chromium, output, root_fixture, binary_dir=None):
             print(json.dumps(result,indent=2))
         finally:
             await gateway.stop();store.close()
+            for relay in relays:await relay.stop()
             await client.stop();await server.stop()
             for process in engines:
                 if process.returncode is None:process.terminate()

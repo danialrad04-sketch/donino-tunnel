@@ -72,6 +72,7 @@ def main():
     p.add_argument('--carrier-base',type=int,default=24443)
     p.add_argument('--health-port',type=int,default=19090)
     p.add_argument('--paqet-port',type=int,default=33434)
+    p.add_argument('--browser-port',type=int,help='foreign HTTPS carrier port; e.g. 443 on an owned domain')
     p=sub.add_parser('deploy')
     p.add_argument('--plan',required=True)
     p.add_argument('--iran-host',required=True)
@@ -97,7 +98,7 @@ def main():
                 endpoint(listen);endpoint(target)
                 services.append({'id':name,'listen':listen,'target':target})
             password=Path(args.password_file).read_text().rstrip('\r\n') if args.password_file else getpass.getpass('Admin password (12+ characters): ')
-            summary=make_plan(args.output,args.iran,args.foreign,services,args.transport or ['frp-wss','frp-quic'],password,args.experimental,args.base_port,args.carrier_base,args.health_port,args.paqet_port)
+            summary=make_plan(args.output,args.iran,args.foreign,services,args.transport or ['frp-wss','frp-quic'],password,args.experimental,args.base_port,args.carrier_base,args.health_port,args.paqet_port,args.browser_port)
             print(json.dumps(summary,indent=2))
             print('Private plan created. Keep the entire plan directory out of git; certificates expire in 90 days.')
         elif args.command=='deploy':

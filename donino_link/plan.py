@@ -185,7 +185,7 @@ def paqet_config(role, iran, foreign, port, token, mappings):
     return json.dumps(config,indent=2)+"\n"
 
 
-def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434):
+def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None):
     if not transports or len(set(transports)) != len(transports) or not set(transports) <= set(TRANSPORTS):
         raise ValueError("select unique supported transports")
     if set(transports) & EXPERIMENTAL and not experimental:
@@ -208,13 +208,38 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         endpoint(service['listen'])
         if not ipaddress.ip_address(endpoint(service['target'])[0]).is_loopback:
             raise ValueError("remote targets must be literal loopback addresses")
-    ports = [endpoint(s['listen'])[1] for s in services]+[health_port,8090]
+    if browser_port is not None and 'browser-wss' not in transports:
+        raise ValueError('--browser-port requires browser-wss')
+    def carrier_port(index, transport):
+        if transport=='paqet':
+            return paqet_port
+        if transport=='browser-wss' and browser_port is not None:
+            return browser_port
+        return carrier_base+index
+    relay_base=base+1000
+    relay_transports=[t for t in transports if t!='browser-wss']
+    iran_ports=[endpoint(s['listen'])[1] for s in services]+[8090]
+    # Target port aliases are valid, but the health responder or a public
+    # wildcard listener must never conflict with an existing origin listener.
+    target_ports={endpoint(s['target'])[1] for s in services}
+    if health_port in target_ports:
+        raise ValueError('foreign health port conflicts with an origin service')
+    foreign_ports=[health_port]+list(target_ports)
+    if relay_transports:
+        foreign_ports.extend(relay_base+j for j in range(len(services)))
     for i,t in enumerate(transports):
-        ports.extend([base+i*100+j for j in range(len(services))]+[base+i*100+50,paqet_port if t=='paqet' else carrier_base+i])
+        if t!='browser-wss':
+            iran_ports.extend(base+i*100+60+j for j in range(len(services)))
+        iran_ports.extend([base+i*100+j for j in range(len(services))]+[base+i*100+50])
+        if t in ('browser-wss','paqet'):
+            foreign_ports.append(carrier_port(i,t))
+        else:
+            iran_ports.append(carrier_port(i,t))
         if t=='frp-wss':
-            ports.append(carrier_base+i+1000)
-    if len(ports)!=len(set(ports)) or any(p<1 or p>65535 for p in ports):
-        raise ValueError("port ranges overlap or are out of bounds; choose different bases")
+            iran_ports.append(carrier_port(i,t)+1000)
+    for ports in [iran_ports,foreign_ports]:
+        if len(ports)!=len(set(ports)) or any(p<1 or p>65535 for p in ports):
+            raise ValueError('port ranges on the same node overlap or are out of bounds')
     output = Path(output)
     if output.exists():
         raise ValueError("plan output already exists; use a new private directory")
@@ -232,6 +257,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         command=f'{OPT}/venv/bin/python -m donino_link.cli run --config {ETC}/{filename}'
         write(root/'units'/'donino-link.service',unit('gateway' if role=='iran' else 'health responder',command))
         units[role].append('donino-link.service')
+    relay_listeners=[]
     for i,t in enumerate(transports):
         engine=t.split('-')[0]
         if engine=='frp':
@@ -239,18 +265,20 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         if engine != 'browser':
             engines.add(engine)
         local_base=base+i*100
-        mappings=[(s['id'],local_base+j,s['target']) for j,s in enumerate(services)]+[('health',local_base+50,f'127.0.0.1:{health_port}')]
+        mappings=[(s['id'],local_base+j,s['target'] if t=='browser-wss' else f'127.0.0.1:{relay_base+j}') for j,s in enumerate(services)]+[('health',local_base+50,f'127.0.0.1:{health_port}')]
         paths.append({'id':t,'transport':t,'priority':10+i*10,'health':f'127.0.0.1:{local_base+50}',
-                      'backends':{s['id']:f'127.0.0.1:{local_base+j}' for j,s in enumerate(services)}})
+                      'backends':{s['id']:f'127.0.0.1:{local_base+j+(0 if t=="browser-wss" else 60)}' for j,s in enumerate(services)}})
+        if t!='browser-wss':
+            relay_listeners.extend({'listen':f'127.0.0.1:{local_base+60+j}','target':f'127.0.0.1:{local_base+j}'} for j in range(len(services)))
         token=secrets.token_hex(32)
-        port=paqet_port if t=='paqet' else carrier_base+i
+        port=carrier_port(i,t)
         for role in ['iran','foreign']:
             root=output/role
             ext='json' if t=='browser-wss' else ('yaml' if t=='paqet' else 'toml')
             file=f'transports/{t}.{ext}'
             if t=='browser-wss':
                 host=f'[{foreign}]' if ':' in foreign else foreign
-                origin=f'https://{host}:{port}'
+                origin=f'https://{host}'+('' if port==443 else f':{port}')
                 common={'role':role,'origin':origin,'token':token}
                 if role=='iran':
                     common.update(chromium='/usr/bin/chromium',spki=spki_pin(output/'ca'/'browser.crt'),ca=f'{ETC}/certs/ca.crt',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
@@ -303,6 +331,14 @@ WantedBy=multi-user.target
                 front_unit=front_unit.replace('After=network-online.target',f'After=network-online.target {name}\nRequires={name}')
                 write(root/'units'/front_name,front_unit)
                 units[role].append(front_name)
+    if relay_transports:
+        for role in ['iran','foreign']:
+            listeners=relay_listeners if role=='iran' else [{'listen':f'127.0.0.1:{relay_base+j}','target':s['target']} for j,s in enumerate(services)]
+            atomic_json(output/role/'transports'/'framed.json',{'role':role,'listeners':listeners})
+            name='donino-link-framed.service'
+            command=f'{OPT}/venv/bin/python -m donino_link.framed --config {ETC}/transports/framed.json'
+            write(output/role/'units'/name,unit('framed stream adapter',command))
+            units[role].append(name)
     atomic_json(output/'iran'/'node.json',{'schema':1,'role':'iran','health_key':health_key,'services':[{k:s[k] for k in ['id','listen']} for s in services],
                 'paths':paths,'policy':{'probe_interval':3,'probe_timeout':2,'failures':3,'recoveries':2,'connect_timeout':2,'idle_timeout':300,'max_connections':2048},
                 'panel':{'listen':'127.0.0.1:8090','credentials_file':f'{ETC}/admin.json','api_token_file':f'{ETC}/api-token'},'state_db':'/var/lib/donino-link/state.sqlite3'})
@@ -314,8 +350,8 @@ WantedBy=multi-user.target
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
                     'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,
-             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_base+i for i,t in enumerate(transports) if t not in ('paqet','browser-wss')]+[endpoint(s['listen'])[1] for s in services],
-                                  'udp':[carrier_base+i for i,t in enumerate(transports) if t=='frp-quic']},
-                                  'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_base+i for i,t in enumerate(transports) if t=='browser-wss'],'udp':[]}}}
+             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss')]+[endpoint(s['listen'])[1] for s in services],
+                                  'udp':[carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']},
+                                  'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t=='browser-wss'],'udp':[]}}}
     atomic_json(output/'plan.json',summary)
     return summary

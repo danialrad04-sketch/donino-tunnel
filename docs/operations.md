@@ -6,6 +6,10 @@
 
 تولید plan عملیات آفلاین است، نصب نیست. قبل از deploy فایل `plan.json` را بخوان. firewall میزبان و provider باید پورت‌های آن را اجازه دهند. برخی carriers به جهت خاص اتصال نیاز دارند. default FRP foreign→Iran است؛ BrowserLink/Paqet Iran→foreign هستند. سرویس مقصد باید loopback باشد.
 
+## لایهٔ مشترک جریان
+
+در مسیرهای FRP/BackPack/Backhaul/Paqet، دروازه به adapter محلیِ framed وصل می‌شود و engine دادهٔ قاب‌بندی‌شده را به adapter loopback خارج می‌رساند. این لایه EOF را داخل جریان منتقل می‌کند و تا پایان هر دو جهت سوکت حامل را باز نگه می‌دارد. قطع یک جهت در موتور زیرین قبلاً می‌توانست پاسخ بعد از upload EOF را کوتاه کند. اندازهٔ هر frame حداکثر ۳۲ KiB و header پنج بایت است؛ مقصدها ثابت، همهٔ listenerها loopback، ظرفیت هر adapter حداکثر ۱۰۲۴ ارتباط و idle timeout مشترک ۳۰۰ ثانیه است. این لایه رمزنگاری جدید ندارد؛ رمزنگاری و احراز هویت بر عهدهٔ carrier است. probe سلامت خودِ carrier و سرویس اصلی را می‌سنجد؛ خرابی adapter محلی هنگام باز کردن backend موجب fallback می‌شود.
+
 ## وضعیت
 
 روی ایران:
