@@ -7,11 +7,15 @@ import tempfile
 from pathlib import Path
 
 
-def atomic_json(path, data):
+def atomic_json(path, data, preserve_permissions=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    previous = path.stat() if preserve_permissions and path.exists() else None
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".write-")
     try:
+        if previous:
+            os.fchown(fd, previous.st_uid, previous.st_gid)
+            os.fchmod(fd, previous.st_mode & 0o777)
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
@@ -104,6 +108,10 @@ def load_config(path):
             raise ValueError(f"{key} must be an integer")
     panel = data["panel"]
     endpoint(panel["listen"])
-    if not loopback(panel["listen"]) and not (panel.get("tls_cert") and panel.get("tls_key")):
-        raise ValueError("public panel requires its own TLS certificate and key")
+    if bool(panel.get('tls_cert')) != bool(panel.get('tls_key')):
+        raise ValueError('panel TLS certificate and key must be set together')
+    if not isinstance(panel.get('allow_insecure_http',False),bool):
+        raise ValueError('allow_insecure_http must be boolean')
+    if not loopback(panel["listen"]) and not (panel.get("tls_cert") and panel.get("tls_key")) and panel.get('allow_insecure_http') is not True:
+        raise ValueError('public panel requires TLS or an explicit allow_insecure_http=true setting')
     return data

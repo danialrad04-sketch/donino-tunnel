@@ -19,6 +19,8 @@ async function main(){
     const page=await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto('http://127.0.0.1:18090');
+    fs.mkdirSync('ui-results',{recursive:true});
+    await page.screenshot({path:'ui-results/login.png',fullPage:true});
     await page.locator('#password').fill('integration-only-password-123');
     await page.locator('#login-form button').click();
     await page.locator('#dashboard').waitFor({state:'visible'});
@@ -33,13 +35,22 @@ async function main(){
     fs.mkdirSync('ui-results',{recursive:true});
     await page.screenshot({path:'ui-results/desktop.png',fullPage:true});
     const desktopOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+    await page.locator('#theme').click();
+    await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+    await page.screenshot({path:'ui-results/dark.png',fullPage:true});
+    await page.reload();
+    await page.locator('#dashboard').waitFor({state:'visible'});
+    await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+    await page.locator('#theme').click();
+    await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+    await page.locator('#refresh').click();
     await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:'ui-results/mobile.png',fullPage:true});
     const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     await page.locator('#mobile-logout').click();await page.locator('#login').waitFor({state:'visible'});
     if(errors.length||desktopOverflow||mobileOverflow)throw Error(JSON.stringify({errors,desktopOverflow,mobileOverflow}));
-    console.log(JSON.stringify({login:true,pause_resume:true,prefer:true,mobile_logout:true,js_errors:errors,horizontal_overflow:false}));
-    if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['desktop','mobile'])console.log('DONINO_SCREENSHOT_'+name+':'+fs.readFileSync('ui-results/'+name+'.png').toString('base64'));
+    console.log(JSON.stringify({login:true,pause_resume:true,prefer:true,mobile_logout:true,dark_light_theme_persists:true,manual_refresh:true,js_errors:errors,horizontal_overflow:false}));
+    if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['desktop','mobile','dark','login'])console.log('DONINO_SCREENSHOT_'+name+':'+fs.readFileSync('ui-results/'+name+'.png').toString('base64'));
   }finally{
     if(browser)await browser.close();
     child.kill('SIGTERM');

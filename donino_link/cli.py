@@ -87,6 +87,13 @@ def main():
     p.add_argument('--node',required=True)
     p=sub.add_parser('renew')
     p.add_argument('--plan',required=True)
+    p=sub.add_parser('panel-access',help='configure the real admin panel listener')
+    p.add_argument('--config',required=True)
+    p.add_argument('--listen',required=True)
+    p.add_argument('--http',action='store_true')
+    p.add_argument('--cert')
+    p.add_argument('--key')
+    p.add_argument('--public-host')
     args=parser.parse_args()
     try:
         if args.command=='plan':
@@ -111,6 +118,12 @@ def main():
         elif args.command=='prepare-paqet':
             from .network import prepare_paqet
             prepare_paqet(args.node)
+        elif args.command=='panel-access':
+            from .panel_access import configure_panel
+            result=configure_panel(args.config,args.listen,args.http,args.cert,args.key,args.public_host)
+            print(json.dumps(result,indent=2))
+            if result['http']:
+                print('HTTP does not encrypt admin passwords or sessions in transit. Authentication and CSRF remain enabled.')
         elif args.command=='renew':
             from .plan import renew_plan
             renew_plan(args.plan)
