@@ -7,6 +7,7 @@ if [[ "${2:-}" == --if-current && "$(readlink -f /opt/donino-link/current || tru
   echo 'Release is not current; restoration already happened or a later release is active.'
   exit 0
 fi
+"$current_dir/venv/bin/python" -m donino_link.host_firewall remove --release "$current_dir"
 previous_dir=$(cat "$current_dir/previous-release")
 while IFS= read -r service; do
   systemctl stop "$service" || true

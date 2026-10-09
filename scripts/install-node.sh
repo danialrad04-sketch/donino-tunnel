@@ -92,6 +92,7 @@ ln -sfn "$release_dir/node" /etc/donino-link/.current-new
 mv -Tf /etc/donino-link/.current-new /etc/donino-link/current
 install -m 0644 "$release_dir"/node/units/*.service /etc/systemd/system/
 systemctl daemon-reload
+"$release_dir/venv/bin/python" -m donino_link.host_firewall apply --node "$release_dir/node" --release "$release_dir" --tag "$release_id"
 while IFS= read -r service; do
   systemctl enable "$service"
   systemctl restart "$service"

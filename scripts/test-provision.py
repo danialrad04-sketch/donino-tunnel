@@ -44,6 +44,9 @@ def main():
                     except RuntimeError:time.sleep(1)
                 else:raise RuntimeError('systemd/SSH did not start in '+node+'\n'+run('docker','logs',PREFIX+'-'+node))
             ips={node:json.loads(run('docker','inspect',PREFIX+'-'+node))[0]['NetworkSettings']['IPAddress'] for node in ['iran','foreign']}
+            for node in ['iran','foreign']:
+                for port in ([22,8090,24443,18080] if node=='iran' else [22]):execute(node,'ufw','allow',str(port)+'/tcp','comment','fixture-existing')
+                execute(node,'ufw','--force','enable')
             execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
             plan=work/'baseline'
             make_plan(plan,ips['iran'],ips['foreign'],[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],['frp-wss'],PASSWORD)
@@ -68,7 +71,7 @@ def main():
                 except (OSError,AssertionError):time.sleep(1)
             else:raise RuntimeError('panel/controller unavailable')
             p=api('/api/provision/profiles',{'name':'Disposable foreign','host':ips['foreign'],'port':22,'fingerprint':pin})
-            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss'],'experimental':True}
+            spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss'],'experimental':True,'open_ufw':True}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
             original_job=job['id'];lost_panel=False
@@ -83,8 +86,17 @@ def main():
                 time.sleep(2)
             else:raise RuntimeError('installation job timed out')
             report['job']=job;report['panel_restarted']=lost_panel
+            if job['status']!='succeeded':
+                import re
+                private=execute('iran','cat','/var/lib/donino-control/jobs/'+job['id']+'/private.log')
+                private=re.sub(r'[0-9a-f]{64}','[redacted]',private)
+                private=re.sub(r'(?im)^.*(?:token|secret|password|private key).*$','[redacted sensitive line]',private)
+                print('FIXTURE INSTALLER DIAGNOSTICS:\n'+private[-16000:])
             assert job['status']=='succeeded',json.dumps(job)
             assert len(job['probes'])==5 and all(p['ok'] for p in job['probes'])
+            for node in ['iran','foreign']:
+                added=execute(node,'ufw','show','added');assert 'Donino-control-'+job['id'] in added;assert 'fixture-existing' in added
+            report['owned_ufw_ports']=True
             login()
             data=os.urandom(2*1024*1024)
             with socket.create_connection((ips['iran'],18080),timeout=10) as conn:
@@ -113,6 +125,7 @@ def main():
                 try:
                     logs=execute(node,'journalctl','--no-pager','-n','250','-u','donino-control','-u','donino-link','-u','donino-link-browser-wss')
                     Path('provision-'+node+'.log').write_text(logs)
+                    print('SYSTEMD '+node+' JOURNAL:\n'+logs[-10000:])
                     # Private worker logs are deliberately not uploaded: they may
                     # include configuration diagnostics from third-party engines.
                 except Exception:pass

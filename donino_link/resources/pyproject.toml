@@ -12,5 +12,8 @@ dependencies = ["aiohttp==3.14.4"]
 [project.scripts]
 donino-link = "donino_link.cli:main"
 
+[tool.setuptools]
+packages = ["donino_link"]
+
 [tool.setuptools.package-data]
 donino_link = ["web/*", "engines.json", "resources/*"]

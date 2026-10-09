@@ -348,6 +348,7 @@ WantedBy=multi-user.target
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
+                    'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t=='browser-wss'],'udp':[]},
                     'listeners': ([{'protocol':'tcp','port':p} for p in iran_ports] + [{'protocol':'udp','port':carrier_port(i,t)} for i,t in enumerate(transports) if t=='frp-quic']) if role=='iran' else [{'protocol':'tcp','port':p} for p in foreign_ports if p not in target_ports],
                     'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,

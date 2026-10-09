@@ -167,6 +167,13 @@ class Coordinator:
             w.event(job, 'verify', 'done', 'All selected paths and destination TCP services passed')
             job['status'] = 'succeeded'
             w.event(job, 'complete', 'done', 'Installation complete; sign in again after the panel restart')
+            for role in ['foreign','iran']:
+                try:
+                    command = ['/opt/donino-link/current/venv/bin/python','-m','donino_link.host_firewall','retire-previous','--release',release]
+                    if role=='iran':r.run(command,timeout=30)
+                    else:self.ssh(profile,' '.join(command),timeout=30)
+                except Exception:
+                    w.event(job,'firewall-cleanup-'+role,'warning','Installation succeeded; old owned UFW rules need manual cleanup')
         except Exception as error:
             job['error'] = str(error) if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__
             self.rollback(job, profile)
@@ -261,7 +268,7 @@ class Worker:
         return profile
 
     def validate_spec(self, body):
-        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port']
+        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw']
         strict_fields(body, fields, ['profile_id', 'iran', 'services', 'transports'])
         profile = self.profile(body['profile_id'])
         if not isinstance(body['services'], list) or not 1 <= len(body['services']) <= 40: raise ValueError('use 1 to 40 TCP services')
@@ -269,6 +276,7 @@ class Worker:
             strict_fields(service, ['id', 'listen', 'target'], ['id', 'listen', 'target'])
             if not all(isinstance(service[k],str) and len(service[k])<=300 for k in ['id','listen','target']): raise ValueError('invalid service field')
         if not isinstance(body['transports'], list) or not all(isinstance(t, str) for t in body['transports']): raise ValueError('invalid transports')
+        if not isinstance(body.get('open_ufw', False), bool): raise ValueError('open_ufw must be boolean')
         if not isinstance(body.get('experimental', False), bool): raise ValueError('experimental must be boolean')
         spec = dict(body); spec['iran'] = public_address(body['iran']); spec['foreign'] = public_address(body.get('foreign') or profile['host'])
         for field, default in [('base_port', 30000), ('carrier_base', 24443), ('health_port', 19090), ('paqet_port', 33434)]:
@@ -306,6 +314,11 @@ class Worker:
                         node['panel'][field] = '/etc/donino-link/current/panel-tls/'+target.name
                 atomic_json(directory/'iran/node.json', node); load_config(directory/'iran/node.json')
                 meta = {'profile_id': spec['profile_id'], 'created': time.time(), 'used': False, 'live_hash': hashlib.sha256(self.live.read_bytes()).hexdigest()}
+                for role in ['iran','foreign']:
+                    install = read_json(directory/role/'install.json'); install['open_ufw'] = spec.get('open_ufw', False); atomic_json(directory/role/'install.json', install)
+                summary['host_firewall'] = 'active-ufw-only' if spec.get('open_ufw') else 'manual'
+                summary['firewall']['iran']['tcp'] = sorted(set(summary['firewall']['iran']['tcp']+[endpoint(live['panel']['listen'])[1]]))
+                atomic_json(directory/'plan.json',summary)
                 atomic_json(directory/'control.json', meta)
                 return {'id': identity, 'summary': summary, 'expires_at': meta['created']+3600,
                         'notice': 'Replaces the complete managed tunnel set on both nodes. Existing connections may be interrupted. The panel restarts; its password and address stay the same.'}
