@@ -37,12 +37,12 @@ def main():
         try:
             run('docker','build','-t',PREFIX,str(BASE/'tests/systemd'))
             for node in ['iran','foreign']:
-                run('docker','run','-d','--name',PREFIX+'-'+node,'--privileged','--cgroupns=private','--tmpfs','/run','--tmpfs','/tmp','-v','/sys/fs/cgroup:/sys/fs/cgroup:rw','-v',str(BASE)+':/source:ro','-v',str(work)+':/work',PREFIX)
+                run('docker','run','-d','--name',PREFIX+'-'+node,'--privileged','--cgroupns=host','--tmpfs','/run','--tmpfs','/tmp','-v','/sys/fs/cgroup:/sys/fs/cgroup:rw','-v',str(BASE)+':/source:ro','-v',str(work)+':/work',PREFIX)
                 for _ in range(60):
                     try:
                         execute(node,'systemctl','is-active','ssh.service');break
                     except RuntimeError:time.sleep(1)
-                else:raise RuntimeError('systemd/SSH did not start in '+node)
+                else:raise RuntimeError('systemd/SSH did not start in '+node+'\n'+run('docker','logs',PREFIX+'-'+node))
             ips={node:json.loads(run('docker','inspect',PREFIX+'-'+node))[0]['NetworkSettings']['IPAddress'] for node in ['iran','foreign']}
             execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
             plan=work/'baseline'

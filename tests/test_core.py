@@ -172,6 +172,8 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_panel_auth_csrf_logout_and_no_secrets(self):
         panel,client=await self.panel_client()
         response=await client.get('/api/status');self.assertEqual(response.status,401)
+        response=await client.get('/api/provision/state');self.assertEqual(response.status,401)
+        response=await client.post('/api/provision/start',json={'plan_id':'a'*32,'confirm_replace':True});self.assertEqual(response.status,401)
         response=await client.post('/api/login',json={'password':PASSWORD});self.assertEqual(response.status,200)
         csrf=(await response.json())['csrf']
         self.assertTrue(response.cookies['donino_session']['httponly'])
@@ -179,6 +181,9 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         text=await response.text();self.assertNotIn(KEY,text);self.assertNotIn(PASSWORD,text)
         self.assertIn("frame-ancestors 'none'",response.headers['Content-Security-Policy'])
         response=await client.post('/api/action',json={'action':'pause'});self.assertEqual(response.status,403)
+        response=await client.post('/api/provision/start',json={'plan_id':'a'*32,'confirm_replace':True});self.assertEqual(response.status,403)
+        response=await client.get('/api/provision/state',headers={'X-CSRF-Token':csrf});self.assertEqual(response.status,200)
+        response=await client.post('/api/provision/start',headers={'Origin':'https://evil.test','X-CSRF-Token':csrf},json={});self.assertEqual(response.status,403)
         response=await client.post('/api/action',headers={'X-CSRF-Token':csrf},json={'action':'pause'});self.assertEqual(response.status,200)
         response=await client.get('/api/status',headers={'Origin':'https://evil.test'});self.assertEqual(response.status,403)
         response=await client.post('/api/logout',headers={'X-CSRF-Token':csrf},json={});self.assertEqual(response.status,200)
