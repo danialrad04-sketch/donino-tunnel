@@ -1,0 +1,232 @@
+{
+  "commit": "43d654b16a0bc814b062588b6f9bbe4a835296d4",
+  "workflow": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37966502624",
+  "unit_tests": 61,
+  "all_seven_ci_jobs": "success",
+  "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
+  "results": [
+    {
+      "installation": "six-carrier complete",
+      "payloads": [
+        {
+          "carrier": "frp-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "frp-quic",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backpack-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backhaul-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "browser-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "paqet",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        }
+      ],
+      "all_path_and_origin_probes": true,
+      "authentication_preserved": true
+    },
+    {
+      "unavailable_origin": "fails before activation",
+      "previous_releases_preserved": true
+    },
+    {
+      "blocked_carrier": "fails after activation",
+      "actual_two_node_rollback": true,
+      "panel_and_password_restored": true
+    }
+  ],
+  "standalone_panels_and_automatic_ssh_pairing": true,
+  "unrelated_operator_ssh_key_preserved": true,
+  "installation_lease_blocks_competing_actions": true,
+  "job": {
+    "id": "1d60986d525419832b89925e90587d92",
+    "plan_id": "a6c892138f588fa6dca80501c4b41c3e",
+    "status": "succeeded",
+    "stage": "complete",
+    "created": 1791567012.1488528,
+    "updated": 1791567066.9242039,
+    "events": [
+      {
+        "time": 1791567012.15469,
+        "stage": "preflight",
+        "status": "running",
+        "message": "Checking both servers before making changes"
+      },
+      {
+        "time": 1791567012.385936,
+        "stage": "preflight",
+        "status": "done",
+        "message": "SSH pin and root access verified"
+      },
+      {
+        "time": 1791567012.3926237,
+        "stage": "prepare-foreign",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791567025.3080125,
+        "stage": "prepare-foreign",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791567025.3095355,
+        "stage": "prepare-iran",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791567056.4771187,
+        "stage": "prepare-iran",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791567056.485415,
+        "stage": "activate-foreign",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791567061.6311483,
+        "stage": "activate-foreign",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791567061.6400282,
+        "stage": "activate-iran",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791567066.8472726,
+        "stage": "activate-iran",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791567066.848623,
+        "stage": "verify",
+        "status": "running",
+        "message": "Testing every selected carrier with signed round-trip probes"
+      },
+      {
+        "time": 1791567066.9227705,
+        "stage": "verify",
+        "status": "done",
+        "message": "All selected paths and destination TCP services passed"
+      },
+      {
+        "time": 1791567066.9242039,
+        "stage": "complete",
+        "status": "done",
+        "message": "Installation complete; sign in again after the panel restart"
+      }
+    ],
+    "prepared": [
+      "foreign",
+      "iran"
+    ],
+    "activated": [
+      "foreign",
+      "iran"
+    ],
+    "activating": null,
+    "probes": [
+      {
+        "path": "frp-wss",
+        "ok": true,
+        "latency_ms": 3.18,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "frp-quic",
+        "ok": true,
+        "latency_ms": 2.79,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backpack-wss",
+        "ok": true,
+        "latency_ms": 6.52,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backhaul-wss",
+        "ok": true,
+        "latency_ms": 6.98,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "browser-wss",
+        "ok": true,
+        "latency_ms": 11.37,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "paqet",
+        "ok": true,
+        "latency_ms": 39.17,
+        "services": {
+          "app": true
+        }
+      }
+    ],
+    "release": "/opt/donino-link/releases/control-1d60986d525419832b89925e90587d92"
+  },
+  "panel_restarted": true,
+  "owned_ufw_ports": true,
+  "foreign_signed_health_and_local_traffic_counters": true,
+  "real_role_ui": true,
+  "pairing_revocation_removes_only_owned_ssh_key": true,
+  "revoked_peer_health_becomes_unknown": true,
+  "native_role_ui": {
+    "real_role_panels": true,
+    "actual_foreign_stop_start_quic": true,
+    "panel_self_stop_prevented": true,
+    "foreign_health_test": true,
+    "code_generation": true,
+    "automatic_pairing_form": true,
+    "no_api_mocks": true,
+    "unknown_after_revocation": true,
+    "desktop": "1440x1000",
+    "mobile": "390x844",
+    "horizontal_overflow": false,
+    "javascript_errors": []
+  }
+}

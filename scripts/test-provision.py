@@ -52,7 +52,9 @@ def main():
             password_file=work/'fixture-password';password_file.write_text(PASSWORD+'\n');password_file.chmod(0o600)
             for node in ['foreign','iran']:
                 options=['--allow-private-peers'] if node=='iran' else []
-                execute(node,'bash','/source/scripts/setup.sh','--role',node,'--address',ips[node],'--password-file','/work/fixture-password',*options)
+                entry='/source/install-donino.sh' if node=='foreign' else '/source/scripts/setup.sh'
+                execute(node,'bash',entry,'--role',node,'--address',ips[node],'--password-file','/work/fixture-password',*options)
+            report['standalone_single_file_and_repository_entrypoints']=True
             # An unrelated operator SSH key must survive pairing and revocation.
             execute('foreign','ssh-keygen','-q','-t','ed25519','-N','','-f','/tmp/operator-key')
             operator_key=execute('foreign','cat','/tmp/operator-key.pub')

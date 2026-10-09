@@ -23,6 +23,8 @@
 
 [نمای موبایل](docs/evidence/panel-mobile.png) · [حالت تیره](docs/evidence/panel-dark.png) · [صفحهٔ ورود](docs/evidence/panel-login.png)
 
+پنل مستقل خارج نیز روی دو node واقعی systemd آزمایش شده است: [نمای دسکتاپ خارج](docs/evidence/foreign-desktop.png) · [موبایل خارج](docs/evidence/foreign-mobile.png) · [حالت تیره](docs/evidence/foreign-dark.png) · [نبود شاهد تازه پس از لغو دسترسی](docs/evidence/foreign-unknown.png). تصاویر از شبکهٔ خصوصی آزمون هستند.
+
 ## راه‌اندازی از داخل پنل
 
 پنل ایران اکنون اتصال SSH خارج، انتخاب هر شش حامل، نقشهٔ نصب، آماده‌سازی هر دو node، فعال‌سازی مرحله‌ای، آزمون تمام مسیرها و بازگشت در شکست را مدیریت می‌کند. کاربر وب محدود است؛ سرویس نصب root جداگانه از socket محلی استفاده می‌کند. [راهنمای نصب از پنل](docs/panel-installer.md) · [تصویر فرم نصب](docs/evidence/panel-setup.png). اجازهٔ SSH با کد پنل خارج خودکار ثبت می‌شود؛ پورت‌های provider باید مجاز باشند. [نصب دو پنل از ترمینال](docs/role-setup.md).
@@ -31,7 +33,15 @@
 
 کنترل‌کننده: Linux/macOS با Python 3.11+، OpenSSL و SSH. سرورها: Debian 12/13 یا Ubuntu 24.04 با systemd، amd64/arm64. نصب خودکار مسیر مرورگر روی سرور ایران فعلاً Debian 12/13 می‌خواهد؛ نسخهٔ Snap اوبونتو پشتیبانی نمی‌شود.
 
-مخزن خصوصی را با حساب خودت clone کن، سپس:
+راه ساده: [فایل مستقل install-donino.sh](install-donino.sh) را دانلود و روی هر دو سرور کپی کن، سپس:
+
+```bash
+sudo bash install-donino.sh
+```
+
+فقط همین فایل لازم است؛ سورس برنامه همراه آن است. مخزن خصوصی است، بنابراین دانلود را با حساب خودت انجام بده. [راهنمای کامل نصب و ارتقا](docs/role-setup.md).
+
+روش جایگزین با سورس مخزن: با حساب خودت clone کن، سپس:
 
 ```bash
 git clone https://github.com/danialrad04-sketch/donino-tunnel.git
