@@ -1,21 +1,27 @@
 {
-  "commit": "36dc925383f326c401a91693de90429d9f59a93c",
-  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37949986875",
+  "commit": "0f03e4d4716f5b2751c8967dcbd3fb1d59a80089",
+  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37957149981",
   "login": true,
   "pause_resume": true,
   "prefer": true,
   "mobile_logout": true,
   "dark_light_theme_persists": true,
   "manual_refresh": true,
+  "installer_form_fixture": true,
+  "review_required": true,
+  "job_progress": true,
+  "installer_mobile_overflow": false,
   "js_errors": [],
   "horizontal_overflow": false,
   "screenshots": [
     "panel-desktop.png",
     "panel-mobile.png",
     "panel-dark.png",
-    "panel-login.png"
+    "panel-login.png",
+    "panel-setup.png",
+    "panel-setup-mobile.png"
   ],
-  "screenshot_scope": "Real engine fixture on GitHub runner; no actual Iran nodes",
-  "visual_review": "Desktop, mobile, dark theme and login reviewed",
+  "screenshot_scope": "Dashboard: real engine fixture. Installer form: declared mocked API fixture. Privileged installation tested separately in systemd integration.",
+  "visual_review": "Desktop/mobile dashboard and setup, dark theme and login reviewed.",
   "public_http_deployed": false
 }

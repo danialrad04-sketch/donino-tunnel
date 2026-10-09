@@ -1,0 +1,215 @@
+{
+  "commit": "46d44ff5424e5b22b93660c7a4f409525ee87c5a",
+  "workflow_run": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/37958097296",
+  "unit_tests": 50,
+  "python_matrix": [
+    "3.11",
+    "3.12",
+    "3.13"
+  ],
+  "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
+  "results": [
+    {
+      "installation": "six-carrier complete",
+      "payloads": [
+        {
+          "carrier": "frp-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "frp-quic",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backpack-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "backhaul-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "browser-wss",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        },
+        {
+          "carrier": "paqet",
+          "payload_bytes_each_direction": 2097152,
+          "sha256_match": true,
+          "half_close": true
+        }
+      ],
+      "all_path_and_origin_probes": true,
+      "authentication_preserved": true
+    },
+    {
+      "unavailable_origin": "fails before activation",
+      "previous_releases_preserved": true
+    },
+    {
+      "blocked_carrier": "fails after activation",
+      "actual_two_node_rollback": true,
+      "panel_and_password_restored": true
+    }
+  ],
+  "job": {
+    "id": "4d33c30d1282b9ddffff9f7b862fe42f",
+    "plan_id": "14af5ba4dd11f35509b6d535fe10c800",
+    "status": "succeeded",
+    "stage": "complete",
+    "created": 1791562778.6129773,
+    "updated": 1791562834.0100908,
+    "events": [
+      {
+        "time": 1791562778.616156,
+        "stage": "preflight",
+        "status": "running",
+        "message": "Checking both servers before making changes"
+      },
+      {
+        "time": 1791562778.834344,
+        "stage": "preflight",
+        "status": "done",
+        "message": "SSH pin and root access verified"
+      },
+      {
+        "time": 1791562778.8428147,
+        "stage": "prepare-foreign",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791562789.6832392,
+        "stage": "prepare-foreign",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791562789.6845558,
+        "stage": "prepare-iran",
+        "status": "running",
+        "message": "Preparing prerequisites and verified engine binaries"
+      },
+      {
+        "time": 1791562824.0235333,
+        "stage": "prepare-iran",
+        "status": "done",
+        "message": "Prepared; active installation has not switched"
+      },
+      {
+        "time": 1791562824.3723438,
+        "stage": "activate-foreign",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791562828.7380526,
+        "stage": "activate-foreign",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791562828.7401679,
+        "stage": "activate-iran",
+        "status": "running",
+        "message": "Activating staged units and configuration"
+      },
+      {
+        "time": 1791562833.6455617,
+        "stage": "activate-iran",
+        "status": "done",
+        "message": "Services started"
+      },
+      {
+        "time": 1791562833.6544557,
+        "stage": "verify",
+        "status": "running",
+        "message": "Testing every selected carrier with signed round-trip probes"
+      },
+      {
+        "time": 1791562833.705931,
+        "stage": "verify",
+        "status": "done",
+        "message": "All selected paths and destination TCP services passed"
+      },
+      {
+        "time": 1791562834.0100908,
+        "stage": "complete",
+        "status": "done",
+        "message": "Installation complete; sign in again after the panel restart"
+      }
+    ],
+    "prepared": [
+      "foreign",
+      "iran"
+    ],
+    "activated": [
+      "foreign",
+      "iran"
+    ],
+    "activating": null,
+    "probes": [
+      {
+        "path": "frp-wss",
+        "ok": true,
+        "latency_ms": 3,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "frp-quic",
+        "ok": true,
+        "latency_ms": 1.99,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backpack-wss",
+        "ok": true,
+        "latency_ms": 5.21,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "backhaul-wss",
+        "ok": true,
+        "latency_ms": 5.66,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "browser-wss",
+        "ok": true,
+        "latency_ms": 8.2,
+        "services": {
+          "app": true
+        }
+      },
+      {
+        "path": "paqet",
+        "ok": true,
+        "latency_ms": 23.78,
+        "services": {
+          "app": true
+        }
+      }
+    ],
+    "release": "/opt/donino-link/releases/control-4d33c30d1282b9ddffff9f7b862fe42f"
+  },
+  "panel_restarted": true,
+  "owned_ufw_ports": true
+}

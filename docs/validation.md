@@ -4,13 +4,13 @@
 
 ## آزمون واحد و امنیت
 
-۳۶ تست شامل اعتبارسنجی endpoint و تنظیمات، امضای تازهٔ probe، رد listener جعلی، hysteresis، fallback قبل از مصرف داده، حفظ half-close، drain، حالت پایدار مدیر، ورود و CSRF و Origin و خروج، rate limit، عدم افشای راز، metrics، قوانین raw scoped، SSH injection، جداسازی کلیدهای node، تولید و تمدید گواهی/pin، پورت 443 مستقل روی دو node، مرز frame، لایهٔ مشترک انتقال، انتخاب صریح HTTP عمومی، رد برخورد پورت و حفظ دسترسی فایل تنظیمات است. ماتریس CI با Python 3.11، 3.12 و 3.13 اجرا می‌شود.
+۵۰ تست شامل اعتبارسنجی endpoint و تنظیمات، امضای تازهٔ probe، رد listener جعلی، hysteresis، fallback قبل از مصرف داده، حفظ half-close، drain، حالت پایدار مدیر، ورود و CSRF و Origin و خروج، rate limit، عدم افشای راز، metrics، قوانین raw scoped، SSH injection، جداسازی کلیدهای node، تولید و تمدید گواهی/pin، پورت 443 مستقل روی دو node، مرز frame، لایهٔ مشترک انتقال، انتخاب صریح HTTP عمومی، رد برخورد پورت و حفظ دسترسی فایل تنظیمات است. ثبت fingerprint معتبر، جلوگیری از شروع بدون مرور نقشه، حفظ credential پنل، آماده‌سازی هر دو نقش پیش از فعال‌سازی، rollback جزئی و بازیابی journal، و قواعد UFW اختصاصی نیز تست شده‌اند. ماتریس CI با Python 3.11، 3.12 و 3.13 اجرا می‌شود.
 
 ## موتورهای واقعی
 
 نسخه‌های ثابت در manifest دانلود، SHA256 بررسی و برنامه‌های اصلی اجرا شدند: FRP WSS، FRP QUIC، BackPack WSS و Backhaul WSS. در هر مسیر ۲ MiB upload و ۲ MiB پاسخ، با تطابق SHA256 و پاسخ بعد از EOF آپلود بررسی می‌شود. mTLS نبودِ گواهی client را رد می‌کند. FRP WSS عمداً قطع می‌شود و ۵۱۲ KiB اتصال جدید از QUIC می‌گذرد. [خروجی محلی](evidence/local-engine-tests.json).
 
-Paqet فقط به لحاظ ساخت config، cipher موجود در source و قواعد محدود iptables بررسی شده؛ عنوان pass end-to-end برای آن نداریم. Backhaul آزمایشی با محدودیت شناخته‌شدهٔ server authentication است، حتی اگر payload loopback آن صحیح منتقل شود.
+Paqet علاوه بر ساخت config، cipher و قواعد محدود iptables، در آزمون نصب دو node روی Docker bridge، probe واقعی امضاشدهٔ end-to-end داده است. در همان آزمون، ۲ MiB در هر جهت از gateway با انتخاب صریح Paqet، تطابق SHA256 و حفظ half-close گذشت؛ این نتیجه benchmark WAN نیست. Backhaul آزمایشی با محدودیت شناخته‌شدهٔ server authentication است، حتی اگر payload loopback آن صحیح منتقل شود.
 
 ## مرورگر واقعی
 
@@ -22,8 +22,16 @@ Paqet فقط به لحاظ ساخت config، cipher موجود در source و ق
 
 ## پنل واقعی
 
-Playwright روی پنلِ متصل به چهار موتور واقعی تست ورود، توقف/ادامه، prefer، به‌روزرسانی دستی، ماندگاری تم روشن/تیره بعد از reload و خروج موبایل را انجام می‌دهد. viewport دسکتاپ 1440×1000 و موبایل 390×844؛ خطای JavaScript و overflow افقی بررسی می‌شود. تصاویر [دسکتاپ](evidence/panel-desktop.png) و [موبایل](evidence/panel-mobile.png) از fixture محلی روی runner هستند، نه سرورهای واقعی ایران و خارج. تصویر بعد از قطع عمدی مسیر WSS گرفته شد؛ قرمز بودن آن مسیر انتظار آزمون است. تصاویر بازبینی بصری شدند؛ پنل جدید در هر دو تم و موبایل خوانا و بدون overflow است. [حالت تیره](evidence/panel-dark.png)، [صفحهٔ ورود](evidence/panel-login.png) و [نتیجهٔ آزمون](evidence/panel-ui-tests.json). HTTP عمومی با انتخاب صریح آماده است؛ استقرار واقعی روی VPS هنوز انجام نشده است.
+Playwright روی پنلِ متصل به چهار موتور واقعی تست ورود، توقف/ادامه، prefer، به‌روزرسانی دستی، ماندگاری تم روشن/تیره بعد از reload و خروج موبایل را انجام می‌دهد. viewport دسکتاپ 1440×1000 و موبایل 390×844؛ خطای JavaScript و overflow افقی بررسی می‌شود. تصاویر [دسکتاپ](evidence/panel-desktop.png) و [موبایل](evidence/panel-mobile.png) از fixture محلی روی runner هستند، نه سرورهای واقعی ایران و خارج. تصویر بعد از قطع عمدی مسیر WSS گرفته شد؛ قرمز بودن آن مسیر انتظار آزمون است. تصاویر بازبینی بصری شدند؛ پنل جدید در هر دو تم و موبایل خوانا و بدون overflow است. [حالت تیره](evidence/panel-dark.png)، [صفحهٔ ورود](evidence/panel-login.png) و [نتیجهٔ آزمون](evidence/panel-ui-tests.json). فرم نصب با fixture صریح API، مرور نقشه، الزام تأیید، نمایش پیشرفت و حالت بازِ موبایل نیز تست شده است؛ این تست UI جایگزین آزمون نصب واقعی زیر نیست. [فرم دسکتاپ](evidence/panel-setup.png) و [فرم موبایل](evidence/panel-setup-mobile.png) بازبینی شده‌اند. HTTP عمومی با انتخاب صریح آماده است؛ استقرار واقعی روی VPS هنوز انجام نشده است.
+
+## نصب واقعی دو node در systemd
+
+GitHub Actions دو container مستقل Debian 12 با systemd، SSH و UFW فعال ساخته است. نصب پایه با خود installer و سپس نصب هر شش حامل از HTTP پنل ایران، socket خصوصی و SSH واقعی انجام شد. مرورگر Chromium با namespace/seccomp sandbox اجرا شد. هر مسیر probe تازهٔ امضاشده و سلامت origin داد؛ دروازه پس از دو دور بررسی سلامت، با انتخاب صریح هر حامل ۲ MiB در هر جهت منتقل کرد. شمارندهٔ همان مسیر و SHA256 و پاسخ پس از upload EOF بررسی شدند.
+
+مقصد TCP ناموجود پیش از فعال‌سازی شکست خورد و release هر دو node حفظ شد. پورت حامل عمداً بسته شد: هر دو node فعال شدند، probe شکست خورد، ایران و سپس خارج واقعاً rollback شدند؛ release قبلی، پنل و رمز حفظ شدند. UFW فقط قواعد app همین release را اضافه کرد و قواعد اولیهٔ fixture باقی ماندند. [نتیجه و journal مراحل](evidence/provision-systemd-tests.json).
+
+این آزمون Linux amd64 روی Docker bridge خصوصی و runner موقت است؛ برای آن اپراتور CI دسترسی privileged و policy مجاز namespace فراهم کرده است. نصب‌کنندهٔ تولیدی این policy را تغییر نمی‌دهد و دسترسی raw/namespace سرور را پیش‌بررسی می‌کند. نتیجهٔ CI جایگزین آزمایش روی دو VPS واقعی و شبکهٔ ایران نیست.
 
 ## پذیرش شبکهٔ واقعی
 
-قبل از استفادهٔ جدی، دو سرور با ساعت صحیح، پورت‌های provider باز، سرویس واقعی loopback، SSH معتبر و دامنه/گواهی مناسب لازم‌اند. installer با dry-run و بسته‌بندی تست شده اما نصب واقعی و rollback واقعی systemd هنوز نیازمند VPS است. پس از نصب، health و app payload جدا بررسی، سپس soak test و reconnect هنگام تغییر مسیر انجام شود. packet loss، شکست handshake، p95 latency، upload/download، مصرف منابع و زمان بازیابی ثبت شوند. IP/دامنه یا uplink مشترک ممکن است همهٔ carrierها را هم‌زمان از دسترس خارج کند.
+قبل از استفادهٔ جدی، دو سرور با ساعت صحیح، پورت‌های provider باز، سرویس واقعی loopback، SSH معتبر و دامنه/گواهی مناسب لازم‌اند. نصب و rollback واقعی systemd در محیط دو node آزمایشی انجام شده؛ پذیرش روی دو VPS در مسیر ایران↔خارج هنوز انجام نشده است. پس از نصب، health و app payload جدا بررسی، سپس soak test و reconnect هنگام تغییر مسیر انجام شود. packet loss، شکست handshake، p95 latency، upload/download، مصرف منابع و زمان بازیابی ثبت شوند. IP/دامنه یا uplink مشترک ممکن است همهٔ carrierها را هم‌زمان از دسترس خارج کند.
