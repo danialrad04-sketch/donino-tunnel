@@ -1,0 +1,167 @@
+{
+  "date": "2026-10-10",
+  "runtime_commit": "e311edc64d0547f7d29855c27d83ac8f530961f6",
+  "engine_repository": "https://github.com/hanselime/paqet",
+  "engine_version": "v1.0.0-alpha.21",
+  "ci_run_id": 38035171632,
+  "ci_url": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/38035171632",
+  "jobs": [
+    {
+      "name": "provision-integration",
+      "id": 114164001100,
+      "conclusion": "success"
+    },
+    {
+      "name": "transport-integration",
+      "id": 114164001141,
+      "conclusion": "success"
+    },
+    {
+      "name": "panel-ui",
+      "id": 114164001164,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (3.12)",
+      "id": 114164001175,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (3.13)",
+      "id": 114164001209,
+      "conclusion": "success"
+    },
+    {
+      "name": "test (3.11)",
+      "id": 114164001228,
+      "conclusion": "success"
+    },
+    {
+      "name": "browser-integration",
+      "id": 114164001257,
+      "conclusion": "success"
+    }
+  ],
+  "unit_tests": {
+    "count": 127,
+    "python": [
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "local_result": "passed",
+    "ci_result": "passed"
+  },
+  "installer": {
+    "file": "install-donino.sh",
+    "bytes": 300672,
+    "sha256": "4fd1d43a033fc92c0291528c61a80e2d9e12c59790336551d1a03f719fde7aa0",
+    "embedded_runtime_sha256": "d353b076446c3475fe11afd1f9f90629247db959d03903c2884f217857e7f88f",
+    "files": 41
+  },
+  "integration": {
+    "scope": "Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN",
+    "native": {
+      "native_tcp_bytes_each_direction": 262144,
+      "native_udp_clients": 8,
+      "native_udp_datagrams_per_client": 16,
+      "native_udp_bytes_each_direction": 194016,
+      "udp_boundaries_and_source_isolation": true,
+      "native_udp_max_payload_tested": 4096,
+      "oversized_datagram_rejected": true,
+      "socks5_authenticated_tcp_bytes_each_direction": 262144,
+      "socks5_wrong_password_rejected": true,
+      "socks5_udp_associate_datagrams": 16,
+      "socks5_udp_boundaries": true
+    },
+    "management": {
+      "fixed_command_diagnostics": true,
+      "bounded_foreign_capture": true,
+      "signed_udp_health_on_both_panels": true,
+      "advanced_config_preserved": true,
+      "credentials_not_exposed": true
+    },
+    "role_ui": true,
+    "results": [
+      {
+        "installation": "eight-carrier complete",
+        "payloads": [
+          {
+            "carrier": "frp-wss",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "frp-quic",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "backpack-wss",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "backhaul-wss",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "browser-wss",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "paqet",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "donino-mux",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          },
+          {
+            "carrier": "donino-continuum",
+            "payload_bytes_each_direction": 2097152,
+            "sha256_match": true,
+            "half_close": true
+          }
+        ],
+        "all_path_and_origin_probes": true,
+        "authentication_preserved": true
+      },
+      {
+        "unavailable_origin": "fails before activation",
+        "previous_releases_preserved": true
+      },
+      {
+        "blocked_carrier": "fails after activation",
+        "actual_two_node_rollback": true,
+        "panel_and_password_restored": true
+      }
+    ],
+    "public_privileged_tcp_udp_port": 444,
+    "ipv4": true,
+    "ipv6_live_test": false
+  },
+  "limits": [
+    "UDP payload <=4096 bytes in upstream alpha.21",
+    "Native TCP/UDP and SOCKS5 bypass gateway route switching and gateway traffic counters",
+    "No Iran WAN, 50-user capacity, production load or DPI invisibility validation"
+  ],
+  "artifact": [
+    {
+      "id": 11663950574,
+      "name": "provision-systemd-results",
+      "digest": "sha256:9484fbca142af2b6c51925cfcb310451599176647766cb26a6c28a150b63d9ed"
+    }
+  ]
+}
