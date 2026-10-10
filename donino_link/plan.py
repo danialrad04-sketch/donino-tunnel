@@ -28,7 +28,7 @@ def write(path, text, mode=0o600):
 
 
 def unit(name, command, raw=False):
-    capabilities = "CAP_NET_RAW CAP_NET_ADMIN" if raw else "CAP_NET_BIND_SERVICE"
+    capabilities = "CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE" if raw else "CAP_NET_BIND_SERVICE"
     families = "AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET" if raw else "AF_INET AF_INET6 AF_UNIX"
     return f"""[Unit]
 Description=Donino Link {name}

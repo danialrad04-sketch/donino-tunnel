@@ -25,7 +25,7 @@ def tcp_test(conn):
 
 def udp_test(index):
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as conn:
-        conn.settimeout(20);conn.connect(('127.0.0.1',18084))
+        conn.settimeout(20);conn.connect(('127.0.0.1',444))
         # Back-to-back datagrams of distinct lengths must not merge or split.
         blocks=[struct.pack('!II',index,n)+os.urandom(size) for n,size in enumerate([32,512,1399,4088]*4)]
         for block in blocks:conn.send(block)
@@ -55,7 +55,7 @@ def socks_command(command,password=b'fixture-socks-password'):
 
 
 def main():
-    with socket.create_connection(('127.0.0.1',18086),timeout=20) as conn:tcp_bytes=tcp_test(conn)
+    with socket.create_connection(('127.0.0.1',444),timeout=20) as conn:tcp_bytes=tcp_test(conn)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:udp_bytes=list(pool.map(udp_test,range(8)))
     socks_command(1,b'wrong-password')
     control,_=socks_command(1)

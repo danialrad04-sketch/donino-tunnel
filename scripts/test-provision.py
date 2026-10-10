@@ -106,8 +106,8 @@ def main():
             spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet','donino-mux','donino-continuum'],'experimental':True,'open_ufw':True}
             spec['paqet_options']={'conn':2,'kcp':{'mode':'normal','dshard':10,'pshard':3,'sndwnd':128,'rcvwnd':128},
                                    'pcap_sockbuf':4194304,'local_flag':['PA'],'remote_flag':['PA'],
-                                   'forwards':[{'listen':'0.0.0.0:18084','target':'127.0.0.1:18082','protocol':'udp'},
-                                               {'listen':'127.0.0.1:18086','target':'127.0.0.1:18083','protocol':'tcp'}],
+                                   'forwards':[{'listen':'0.0.0.0:444','target':'127.0.0.1:18082','protocol':'udp'},
+                                               {'listen':'127.0.0.1:444','target':'127.0.0.1:18083','protocol':'tcp'}],
                                    'socks5':[{'listen':'127.0.0.1:1080','username':'fixture','password':'fixture-socks-password'}]}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
