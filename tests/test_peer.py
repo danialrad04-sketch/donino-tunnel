@@ -90,6 +90,22 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError,'service observations'):
             self.agent.telemetry(pair,{'config_hash':digest('1'*64),'probes':[{'path':'frp-wss','ok':True,'services':{'unknown':True}}]})
 
+    async def test_telemetry_accepts_all_registered_carriers_without_duplicates(self):
+        from donino_link.plan import TRANSPORTS
+        result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
+        install=self.agent.live.parent/'install.json'
+        install.write_text(json.dumps({'units':['donino-link-'+t+'.service' for t in TRANSPORTS]}))
+        rows=[{'path':t,'ok':True,'services':{'app':True}} for t in TRANSPORTS]
+        body={'config_hash':digest('1'*64),'probes':rows}
+        with patch('donino_link.peer.OBSERVATIONS',self.root/'observations.json'),patch('grp.getgrnam') as group,patch('donino_link.peer.os.chown'):
+            group.return_value.gr_gid=0
+            self.agent.telemetry(pair,body)
+            self.assertEqual(len(self.agent.state()['telemetry']['probes']),len(TRANSPORTS))
+            with self.assertRaisesRegex(ValueError,'duplicate'):
+                self.agent.telemetry(pair,{**body,'probes':rows[:-1]+[rows[0]]})
+            with self.assertRaisesRegex(ValueError,'invalid probes'):
+                self.agent.telemetry(pair,{**body,'probes':rows+[rows[0]]})
+
     async def test_revocation_invalidates_health_and_rejects_inflight_publication(self):
         result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
         observations=self.root/'observations.json'

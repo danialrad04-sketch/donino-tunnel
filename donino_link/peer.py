@@ -206,13 +206,15 @@ class ForeignAgent:
         config = load_config(self.live)
         if body['config_hash'] != digest(config['health_key']): raise ValueError('telemetry belongs to another installation')
         probes = body['probes']
-        if not isinstance(probes,list) or len(probes)>7: raise ValueError('invalid probes')
         install = read_json(self.live.parent/'install.json', {})
-        names = {u.removeprefix('donino-link-').removesuffix('.service') for u in install.get('units',[])}
-        clean=[]
+        from .plan import TRANSPORTS
+        names = {u.removeprefix('donino-link-').removesuffix('.service') for u in install.get('units',[])} & set(TRANSPORTS)
+        if not isinstance(probes,list) or len(probes)>len(names): raise ValueError('invalid probes')
+        clean=[];seen=set()
         for row in probes:
             strict_fields(row,['path','ok','latency_ms','services','error'],['path','ok'])
-            if row['path'] not in names or not isinstance(row['ok'],bool): raise ValueError('unknown probe path')
+            if not isinstance(row['path'],str) or row['path'] not in names or row['path'] in seen or not isinstance(row['ok'],bool): raise ValueError('unknown probe path or duplicate')
+            seen.add(row['path'])
             latency = row.get('latency_ms')
             if latency is not None and (isinstance(latency,bool) or not isinstance(latency,(int,float)) or not 0<=latency<=60000): raise ValueError('invalid latency')
             services = row.get('services',{})
