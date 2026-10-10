@@ -30,6 +30,7 @@ SETTINGS = Path('/etc/donino-foreign-agent.json')
 LIVE = Path('/etc/donino-link/current/node.json')
 SSH_DROPIN = Path('/etc/ssh/sshd_config.d/00-donino-pair.conf')
 OBSERVATIONS = Path('/var/lib/donino-link/peer-observations.json')
+PEER_ROUTES=('/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation')
 
 
 def digest(value):
@@ -59,7 +60,7 @@ def split_code(code):
 
 
 async def peer_request(profile, path, body=None, token=None):
-    if path not in ('/exchange', '/telemetry', '/lease', '/release', '/revoke-self'):
+    if path not in PEER_ROUTES:
         raise ValueError('unsupported peer operation')
     host = profile['host']
     if ':' in host: host = '['+host+']'
@@ -71,8 +72,9 @@ async def peer_request(profile, path, body=None, token=None):
     async with ClientSession(timeout=ClientTimeout(total=30), trust_env=False) as session:
         async with session.post(f'https://{host}:{port}'+path, json=body, headers=headers,
                                 ssl=Fingerprint(bytes.fromhex(pin)), allow_redirects=False) as response:
-            raw = await response.content.read(32769)
-            if len(raw) > 32768: raise ValueError('peer response too large')
+            limit=1048576 if path=='/inventory' else 32768
+            raw = await response.content.read(limit+1)
+            if len(raw) > limit: raise ValueError('peer response too large')
             if response.status==401:raise ValueError('foreign management permission was revoked; generate a new pairing code')
             try:result=json.loads(raw)
             except ValueError:raise ValueError('foreign agent endpoint did not accept the request') from None
@@ -379,7 +381,7 @@ def application(agent, network=False):
                 elif request.path=='/release':result=agent.release(pair,body)
                 else: result=await asyncio.to_thread(agent.revoke,pair['id'])
             return web.json_response(result)
-        for path in ['/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation']:app.router.add_post(path,dispatch)
+        for path in PEER_ROUTES:app.router.add_post(path,dispatch)
     else:
         async def state(request):return web.json_response(await asyncio.to_thread(agent.state))
         async def code(request):return web.json_response(agent.pairing_code())
@@ -424,7 +426,9 @@ TimeoutStopSec=60
 UMask=0077
 RuntimeDirectory=donino-foreign
 RuntimeDirectoryMode=0750
-ProtectHome=true
+# Existing vendor configurations may live under /root or /home.
+# Only the private root agent accesses them; the web process stays sandboxed.
+ProtectHome=false
 PrivateTmp=true
 LimitNOFILE=65536
 [Install]

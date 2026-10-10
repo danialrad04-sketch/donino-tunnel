@@ -160,13 +160,18 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
         context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(cert,key)
         received=[]
         async def handle(request):received.append(await request.json());return web.json_response({'accepted':True})
-        app=web.Application();app.router.add_post('/exchange',handle)
+        app=web.Application()
+        for path in ('/exchange','/inventory','/external-health','/external-observation'):app.router.add_post(path,handle)
         server=TestServer(app,scheme='https');await server.start_server(ssl=context)
         profile={'host':'127.0.0.1','agent_port':server.port,'agent_fingerprint':hashlib.sha256(ssl.PEM_cert_to_DER_cert(cert.read_text())).hexdigest()}
         try:
             with self.assertRaises(ServerFingerprintMismatch):await peer_request({**profile,'agent_fingerprint':'b'*64},'/exchange',{'token':'private'})
             self.assertEqual(received,[])
             await peer_request(profile,'/exchange',{'token':'private'});self.assertEqual(received,[{'token':'private'}])
+            for path in ('/inventory','/external-health','/external-observation'):
+                self.assertTrue((await peer_request(profile,path,{'probe':'fixture'}))['accepted'])
+            self.assertEqual(len(received),4)
+            with self.assertRaisesRegex(ValueError,'unsupported'):await peer_request(profile,'/imported-action',{})
         finally:await server.close()
 
     async def test_foreign_health_never_conflates_active_unit_with_live_tunnel(self):

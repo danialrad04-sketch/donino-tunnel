@@ -51,8 +51,13 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
         call(url,{'id':r['id'],'action':'manage','enabled':True})
         assert snapshot(node)==before[node],'adoption restarted or rewrote vendor installation'
     url='/api/provision/imported-action';rid=detected['iran']['id']
+    def probe():
+        try:return api(url,{'id':rid,'action':'test','profile_id':profile['id']})
+        except urllib.error.HTTPError as error:
+            reason=json.loads(error.read()).get('error','unknown test error')
+            raise AssertionError('existing carrier probe request rejected: '+reason) from error
     for _ in range(12):
-        tested=api(url,{'id':rid,'action':'test','profile_id':profile['id']})
+        tested=probe()
         if tested['tcp_ok'] and tested['udp_ok']:break
         time.sleep(1)
     assert tested['tcp_ok'] and tested['udp_ok'],tested
@@ -86,7 +91,7 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
     else:raise AssertionError('panels did not recover after upgrade')
     # Give the upgraded peer responders a moment to start, then retest.
     for _ in range(12):
-        tested=api(url,{'id':rid,'action':'test','profile_id':profile['id']})
+        tested=probe()
         if tested['tcp_ok'] and tested['udp_ok']:break
         time.sleep(1)
     assert tested['tcp_ok'] and tested['udp_ok'],tested

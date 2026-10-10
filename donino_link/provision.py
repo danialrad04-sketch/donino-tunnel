@@ -656,7 +656,9 @@ TimeoutStopSec=2100
 UMask=0077
 RuntimeDirectory=donino-control
 RuntimeDirectoryMode=0750
-ProtectHome=true
+# Existing vendor configurations may live under /root or /home.
+# Only the private root agent accesses them; the web process stays sandboxed.
+ProtectHome=false
 PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
