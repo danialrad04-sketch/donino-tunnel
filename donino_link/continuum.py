@@ -253,6 +253,7 @@ class DurableSession:
         self.replayed = asyncio.Event()
         self.replay_task = None
         self.send_lock = asyncio.Lock()
+        self.bind_lock = asyncio.Lock()
         self.tasks = set()
         self.closed = False
         self.disconnected_at = time.monotonic()
@@ -596,14 +597,19 @@ class ContinuumNode(MuxNode):
                 session = DurableSession(self, value['id'], value['token'], peer)
                 self.identities[session.identity] = session
                 self.sessions.add(session)
-            admitted = True
-            # Commit epoch before any await: a second handshake cannot reuse it.
-            session.epoch = value['epoch']
-            response = {'version': PROTOCOL, 'epoch': session.epoch, 'streams': session.states()}
-            await ws.send_str(json.dumps(response, separators=(',', ':')))
-            await session.attach(ws, value['streams'])
-            if value['resume']:
-                self.recoveries += 1
+            async with session.bind_lock:
+                # Recheck after waiting: two concurrent handshakes must not
+                # attach an older epoch after a newer handshake has committed.
+                if session.closed or value['epoch'] <= session.epoch:
+                    raise ProtocolError('resume superseded')
+                admitted = True
+                # Commit epoch before any await: a second handshake cannot reuse it.
+                session.epoch = value['epoch']
+                response = {'version': PROTOCOL, 'epoch': session.epoch, 'streams': session.states()}
+                await ws.send_str(json.dumps(response, separators=(',', ':')))
+                await session.attach(ws, value['streams'])
+                if value['resume']:
+                    self.recoveries += 1
             await session.receive(ws)
         except ProtocolError as error:
             self.last_error = str(error)

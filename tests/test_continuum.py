@@ -179,6 +179,42 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
             hold=False;DurableSession.send=original
             transfer.cancel();await asyncio.gather(transfer,return_exceptions=True)
 
+    async def test_unsent_data_is_replayed_after_socket_abort(self):
+        original=DurableSession.send;dropped=asyncio.Event()
+        async def send(session,kind,sid,offset=0,body=b''):
+            if session.node is self.iran and kind==DATA and not dropped.is_set():
+                dropped.set()
+                # Drop before DATA reaches the foreign peer; pending holds it.
+                session.ws._response.connection.transport.abort()
+                return
+            await original(session,kind,sid,offset,body)
+        DurableSession.send=send
+        try:
+            data=os.urandom(512*1024)
+            self.assertEqual(await self.payload(data),data)
+            self.assertEqual(self.received,[data]);self.assertEqual(self.origin_connections,1)
+            self.assertTrue(dropped.is_set());self.assertGreater(self.iran.replayed_bytes,0)
+            self.assertEqual(self.foreign.stats.bytes_up,len(data))
+        finally:DurableSession.send=original
+
+    async def test_binding_lock_rechecks_epoch_after_a_competing_handshake(self):
+        session=await self.iran.lane(0);foreign=next(iter(self.foreign.sessions))
+        await foreign.bind_lock.acquire()
+        client=None;ws=None
+        try:
+            _,client,ws=await self.raw(epoch=2)
+            # Keep the request waiting at the bind lock, then simulate a newer
+            # admitted generation. The stale waiter must not replace the lane.
+            await asyncio.sleep(.05);foreign.epoch=3;old=foreign.ws
+            foreign.bind_lock.release()
+            reply=await asyncio.wait_for(ws.receive(),2)
+            self.assertEqual(reply.type,WSMsgType.CLOSE);self.assertEqual(reply.data,1008)
+            self.assertIs(foreign.ws,old);self.assertFalse(session.closed)
+        finally:
+            if foreign.bind_lock.locked():foreign.bind_lock.release()
+            if ws:await ws.close()
+            if client:await client.close()
+
     async def test_foreign_restart_closes_old_flow_without_recreating_origin(self):
         reader,writer=await asyncio.open_connection('127.0.0.1',self.local)
         try:
