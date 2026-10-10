@@ -14,6 +14,9 @@ Status: discovery in progress; not a production readiness declaration.
 - Q7: accounts, traffic quotas and subscription expiration remain managed in the existing VPN panel. Donino is responsible for installation, tunneling and monitoring, not a new subscription manager.
 - Q8: target acceptance profile is 1 CPU core and 1 GiB RAM per server; resource use has priority. This target has not been load-tested. Existing BrowserLink preflight requires at least 1.5 GiB host RAM, so BrowserLink cannot be enabled in this profile under current requirements.
 - Q9: implement UDP and complete tests first, then conduct a two-VPS pilot.
+- Q10: run one primary carrier and one lightweight standby; other carriers are enabled by explicit operator choice.
+- Q11: Iran runs only tunnel infrastructure. Foreign also hosts the existing VPN panel. The 1 GiB target must therefore account for panel/backend resource usage on foreign; actual baseline usage remains to be measured.
+- Q12: 50-user acceptance workload is mixed browsing, some downloads, video, games and calls, not 50 simultaneous bulk downloads.
 - Initial target: up to 50 simultaneous users.
 - User count is not TCP connection count; the capacity test must represent multiple flows per user.
 - Existing requests remain: role-specific Iran/foreign panels, automated two-node installation, HTTP panel support.
@@ -31,9 +34,10 @@ Status: discovery in progress; not a production readiness declaration.
 ## Open decisions
 
 1. Backend installation scope settled: existing backends and installation on an empty server. Subscription management stays in the existing VPN panel; Donino must not assume ownership of its user database.
-2. CPU/RAM and OS profile settled. Pending: carrier concurrency in the low-memory profile and whether the 1 GiB budget includes the existing VPN panel and backends.
+2. CPU/RAM, OS, carrier concurrency and role workload profile settled. Pending: measured foreign panel/backend baseline resource use.
 3. Acceptable gameplay/call latency, loss behavior, and recovery window.
 4. Scope of direct UDP versus UDP encapsulated by an existing proxy backend.
+5. Prioritization between bulk transfers and interactive traffic; update policy and identification of the existing VPN panel.
 
 ## Acceptance work after the relevant decisions
 
