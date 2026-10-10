@@ -40,7 +40,7 @@ OPEN تکراری در بازیابی تنها اگر نام همان سرویس
 
 ```bash
 donino-link plan --iran 192.0.2.10 --foreign 198.51.100.20 \
-  --service app,0.0.0.0:18080,127.0.0.1:18081 \
+  --service app=0.0.0.0:18080,127.0.0.1:18081 \
   --transport donino-continuum --experimental --output private-plan
 ```
 
