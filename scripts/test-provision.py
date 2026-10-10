@@ -173,6 +173,7 @@ def main():
                 cfg=json.loads(execute(role,'cat','/etc/donino-link/current/transports/paqet.yaml'))
                 assert cfg['network']['tcp']['local_flag']==['PA'] and cfg['network']['pcap']['sockbuf']==4194304
                 assert cfg['transport']['kcp']['dshard']==10 and cfg['transport']['kcp']['pshard']==3
+            foreign_login()  # Installation restarted the foreign panel and invalidated its old session.
             for action in ['version','dump']:
                 record=foreign_api('/api/foreign/action',{'unit':'donino-link-paqet.service','action':action})
                 for _ in range(30):
