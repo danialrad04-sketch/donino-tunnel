@@ -7,6 +7,7 @@ Status: discovery in progress; not a production readiness declaration.
 
 - Required first-use traffic: browsing, downloads, video, games and calls.
 - UDP is required, not optional.
+- Required user-facing protocols in the first version: both VLESS/Xray and WireGuard (operator answer to Q3).
 - Initial target: up to 50 simultaneous users.
 - User count is not TCP connection count; the capacity test must represent multiple flows per user.
 - Existing requests remain: role-specific Iran/foreign panels, automated two-node installation, HTTP panel support.
@@ -23,7 +24,7 @@ Status: discovery in progress; not a production readiness declaration.
 
 ## Open decisions
 
-1. How users enter: existing Xray/sing-box or Pasarguard service, or direct TCP/UDP port forwarding?
+1. User-facing protocols settled: VLESS/Xray and WireGuard. Pending: whether Donino connects to operator-managed existing backends or also installs those backends.
 2. Server CPU/RAM and OS for the capacity acceptance profile.
 3. Acceptable gameplay/call latency, loss behavior, and recovery window.
 4. Scope of direct UDP versus UDP encapsulated by an existing proxy backend.
@@ -38,3 +39,4 @@ Status: discovery in progress; not a production readiness declaration.
 - Run an operator-controlled real two-VPS pilot before declaring readiness for the target network.
 
 No claim of invisibility, zero disruption, fixed speed or universal novelty is an acceptance criterion.
+
