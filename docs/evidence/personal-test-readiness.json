@@ -1,0 +1,77 @@
+{
+  "review_date": "2026-10-10",
+  "reviewed_main_commit": "7951f8da7e7afbf9b9ce523142c0b59c850a5c50",
+  "runtime_ci_commit": "75e64a2d8f5071229879ddcee306c5328b38af2e",
+  "runtime_changes": false,
+  "new_grill_requirements_implemented": false,
+  "local_unit_tests": {
+    "count": 113,
+    "elapsed_seconds": 74.589,
+    "result": "OK",
+    "python": "3.12"
+  },
+  "shell_syntax": "PASS",
+  "python_compile": "PASS",
+  "standalone_rebuild_identical": true,
+  "installer_sha256": "a561ae9e4d9c54d394fd211b4ba53c533edd2e9defadbaea0d26a365093da64a",
+  "documented_continuum_cli": "PASS; generated and removed temporary plans for both roles",
+  "documentation_fix": "Corrected --service app,... to --service app=,... in docs/continuum.md",
+  "live_engine_test": {
+    "mtls_front_requires_client_certificate": true,
+    "frp-wss": {
+      "probe_ms": 3.988,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true
+    },
+    "frp-quic": {
+      "probe_ms": 3.395,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true
+    },
+    "backpack-wss": {
+      "probe_ms": 7.934,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true
+    },
+    "backhaul-wss": {
+      "probe_ms": 2.056,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true
+    },
+    "failover": {
+      "from": "frp-wss",
+      "to": "frp-quic",
+      "bytes_echoed": 524288,
+      "pass": true
+    },
+    "elapsed_seconds": 3.09,
+    "scope": "loopback Linux, amd64; no Iran route, raw packets or production load test"
+  },
+  "test_environment_issue": "Initial scratch Backhaul binary was truncated (168448 bytes). Retried with 9080984-byte binary extracted from the existing SHA256-verified pinned archive; all four carriers and failover passed. This scratch binary is not bundled in the installer.",
+  "prior_ci": {
+    "run_id": 38028198496,
+    "all_7_jobs": "success",
+    "url": "https://github.com/danialrad04-sketch/donino-tunnel/actions/runs/38028198496"
+  },
+  "verdict": "Suitable for a limited personal functional TCP pilot; not evidence of production readiness.",
+  "not_verified_or_not_implemented": [
+    "Real Iran-to-foreign VPS path and DPI behavior",
+    "50 mixed users on 1 core/1 GiB, including the foreign Pasarguard baseline",
+    "Direct UDP gateway and WireGuard forwarding/provisioning",
+    "Xray/WireGuard backend installation and the new Grill Me requirements"
+  ],
+  "pilot_notes": [
+    "Keep the existing Pasarguard backend running; use its Xray inbound TCP port as the target, not the panel web port.",
+    "Avoid BrowserLink on 1 GiB hosts; current preflight requires at least 1.5 GiB.",
+    "Use bootstrap installer on both roles, then pair and inspect the tunnel plan before activation.",
+    "Allow panel, pairing, SSH and selected carrier ports in the provider firewall."
+  ]
+}
