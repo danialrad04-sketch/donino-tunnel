@@ -106,6 +106,18 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError,'invalid probes'):
                 self.agent.telemetry(pair,{**body,'probes':rows+[rows[0]]})
 
+    async def test_paqet_udp_telemetry_is_typed_and_scoped(self):
+        atomic_json(self.root/'install.json',{'units':['donino-link-paqet.service','donino-link-frp-wss.service']})
+        result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
+        row={'path':'paqet','ok':True,'udp_ok':True,'udp_latency_ms':12.5}
+        body={'config_hash':digest('1'*64),'probes':[row]}
+        with patch('donino_link.peer.OBSERVATIONS',self.root/'observations.json'),patch('grp.getgrnam') as group,patch('donino_link.peer.os.chown'):
+            group.return_value.gr_gid=0
+            self.agent.telemetry(pair,body)
+            self.assertTrue(self.agent.state()['telemetry']['probes'][0]['udp_ok'])
+            for invalid in [{**row,'udp_ok':'yes'},{**row,'udp_latency_ms':True},{**row,'path':'frp-wss'}]:
+                with self.assertRaises(ValueError):self.agent.telemetry(pair,{**body,'probes':[invalid]})
+
     async def test_revocation_invalidates_health_and_rejects_inflight_publication(self):
         result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
         observations=self.root/'observations.json'

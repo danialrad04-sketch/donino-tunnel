@@ -38,7 +38,7 @@ class Panel:
         self.attempts = OrderedDict()
         self.login_lock = asyncio.Lock()
         self.runner = None
-        self.app = web.Application(client_max_size=16384, middlewares=[self.security,self.authentication])
+        self.app = web.Application(client_max_size=65536, middlewares=[self.security,self.authentication])
         self.app.add_routes([
             web.get("/",self.index),web.get("/app.js",self.static),web.get("/style.css",self.static),web.get('/Vazirmatn.woff2',self.static),
             web.get("/healthz",self.healthz),web.post("/api/login",self.login),
@@ -50,6 +50,7 @@ class Panel:
             web.post('/api/provision/pair',self.provision),
             web.post('/api/provision/preview',self.provision),
             web.post('/api/provision/start',self.provision),
+            web.post('/api/provision/paqet-action',self.provision),
             web.get('/api/foreign/state',self.foreign),web.post('/api/foreign/code',self.foreign),
             web.post('/api/foreign/revoke',self.foreign),web.post('/api/foreign/action',self.foreign),
         ])

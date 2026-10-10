@@ -264,6 +264,7 @@ class Worker:
                 *(['-o','AddressFamily='+profile['family']] if profile.get('family') else []),'root@'+profile['host']]
 
     def state(self):
+        from .paqet import capabilities, status
         with self.lock:
             jobs = [read_json(p) for p in (self.root/'jobs').glob('*/job.json')]
         return {'available': True, 'public_key': self.identity.with_suffix('.pub').read_text().strip(),
@@ -271,7 +272,44 @@ class Worker:
                              for p in read_json(self.root/'profiles.json', [])],
                 'transports': [{'id': t, 'experimental': t in EXPERIMENTAL} for t in TRANSPORTS],
                 'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy,
-                'iran_address':read_json(self.live,{}).get('public_address')}
+                'iran_address':read_json(self.live,{}).get('public_address'),
+                'paqet_capabilities':capabilities(),'paqet':status(self.live.parent), 'active_spec':self.active_spec()}
+
+    def active_spec(self):
+        from .paqet import safe_options
+        live=read_json(self.live,{})
+        jobs=sorted([read_json(p) for p in (self.root/'jobs').glob('*/job.json')],key=lambda j:j['created'],reverse=True)
+        for job in jobs:
+            if job.get('status')!='succeeded':continue
+            directory=self.root/'plans'/job['plan_id'];meta=read_json(directory/'control.json',{})
+            if read_json(directory/'iran/node.json',{}).get('health_key')!=live.get('health_key'):continue
+            spec=json.loads(json.dumps(meta.get('spec')))
+            if spec and 'paqet_options' in spec:spec['paqet_options']=safe_options(spec['paqet_options'])
+            return spec
+        return None
+
+    async def paqet_action(self,body):
+        from .paqet import UNIT, DIAGNOSTICS, diagnostic
+        strict_fields(body,['action'],['action'])
+        action=body['action']
+        if action not in (*DIAGNOSTICS,'start','stop','restart','udp-test'):raise ValueError('invalid Paqet action')
+        if UNIT not in read_json(self.live.parent/'install.json',{}).get('units',[]):raise ValueError('Paqet is not installed')
+        with self.lock:
+            if self.busy:raise ValueError('installation or action already running')
+            self.busy=True
+        try:
+            if action=='udp-test':
+                from .udp_health import probe
+                cfg=load_config(self.live);path=next((p for p in cfg['paths'] if p['id']=='paqet'),{})
+                if not path.get('udp_health'):raise ValueError('reinstall Paqet with the UDP health channel first')
+                try:return {'action':action,'ok':True,'latency_ms':await probe(path['udp_health'],cfg['health_key']), 'meaning':'authenticated native UDP round trip; not an origin application test'}
+                except (OSError,asyncio.TimeoutError):return {'action':action,'ok':False,'error':'UDP round trip failed'}
+            if action in DIAGNOSTICS:return await asyncio.to_thread(diagnostic,action,self.live.parent)
+            result=await asyncio.to_thread(subprocess.run,['systemctl',action,UNIT],capture_output=True,timeout=45)
+            if result.returncode:raise ValueError('Paqet service operation failed; inspect its journal')
+            return {'action':action,'ok':True}
+        finally:
+            with self.lock:self.busy=False
 
     def pair(self, body):
         from .peer import split_code,peer_request
@@ -345,10 +383,10 @@ class Worker:
         return profile
 
     def validate_spec(self, body):
-        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw']
+        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw','paqet_options','paqet_keep_secrets']
         strict_fields(body, fields, ['profile_id', 'iran', 'services', 'transports'])
         profile = self.profile(body['profile_id'])
-        if not isinstance(body['services'], list) or not 1 <= len(body['services']) <= 40: raise ValueError('use 1 to 40 TCP services')
+        if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP services')
         for service in body['services']:
             strict_fields(service, ['id', 'listen', 'target'], ['id', 'listen', 'target'])
             if not all(isinstance(service[k],str) and len(service[k])<=300 for k in ['id','listen','target']): raise ValueError('invalid service field')
@@ -359,6 +397,21 @@ class Worker:
         for field, default in [('base_port', 30000), ('carrier_base', 24443), ('health_port', 19090), ('paqet_port', 33434)]:
             spec[field] = integer(spec.get(field, default), 1024, 65535, field)
         if spec.get('browser_port') is not None: integer(spec['browser_port'], 1, 65535, 'browser port')
+        if type(spec.get('paqet_keep_secrets',False)) is not bool:raise ValueError('Paqet keep secrets must be boolean')
+        if 'paqet_options' in spec:
+            from .paqet import options
+            if 'paqet' not in spec['transports']:raise ValueError('Paqet settings require Paqet')
+            raw=spec['paqet_options']
+            if spec.get('paqet_keep_secrets'):
+                raw=json.loads(json.dumps(raw))
+                if not isinstance(raw,dict):raise ValueError('invalid Paqet settings')
+                old=read_json(self.live.parent/'transports/paqet.yaml',{})
+                if not raw.get('key') and old.get('transport',{}).get('kcp',{}).get('key'):raw['key']=old['transport']['kcp']['key']
+                credentials={(r['listen'],r.get('username','')):r.get('password','') for r in old.get('socks5',[])}
+                if not isinstance(raw.get('socks5',[]),list):raise ValueError('invalid Paqet SOCKS5 settings')
+                for row in raw.get('socks5',[]):
+                    if isinstance(row,dict) and row.get('username') and not row.get('password'):row['password']=credentials.get((row.get('listen'),row['username']),'')
+            spec['paqet_options']=options(raw)
         return spec
 
     def preview(self, body):
@@ -390,7 +443,7 @@ class Worker:
                 summary = make_plan(directory, spec['iran'], spec['foreign'], spec['services'], spec['transports'],
                                     secrets.token_urlsafe(24), spec.get('experimental', False), spec['base_port'],
                                     spec['carrier_base'], spec['health_port'], spec['paqet_port'], spec.get('browser_port'),
-                                    panel_port=endpoint(live['panel']['listen'])[1])
+                                    panel_port=endpoint(live['panel']['listen'])[1],paqet_options=spec.get('paqet_options'))
                 node = read_json(directory/'iran/node.json'); node['panel'] = live['panel']; node['state_db'] = live['state_db']
                 node['public_address']=spec['iran']
                 atomic_json(directory/'iran/node.json', node)
@@ -403,14 +456,14 @@ class Worker:
                         target.parent.mkdir(exist_ok=True, mode=0o700); shutil.copyfile(live['panel'][field], target); target.chmod(0o600)
                         node['panel'][field] = '/etc/donino-link/current/panel-tls/'+target.name
                 atomic_json(directory/'iran/node.json', node); load_config(directory/'iran/node.json')
-                meta = {'profile_id': spec['profile_id'], 'created': time.time(), 'used': False, 'live_hash': hashlib.sha256(self.live.read_bytes()).hexdigest()}
+                meta = {'profile_id': spec['profile_id'], 'created': time.time(), 'used': False, 'live_hash': hashlib.sha256(self.live.read_bytes()).hexdigest(),'spec':spec}
                 for role in ['iran','foreign']:
                     install = read_json(directory/role/'install.json'); install['open_ufw'] = spec.get('open_ufw', False); atomic_json(directory/role/'install.json', install)
                 summary['host_firewall'] = 'active-ufw-only' if spec.get('open_ufw') else 'manual'
                 if self.profile(spec['profile_id']).get('panel_listen'):
                     profile=self.profile(spec['profile_id']);foreign_ports=[endpoint(profile['panel_listen'])[1],profile['agent_port']]
                     staged=read_json(directory/'foreign/install.json')
-                    occupied={item['port'] for item in staged['listeners']}|{endpoint(s['target'])[1] for s in spec['services']}
+                    occupied={item['port'] for item in staged['listeners']}|{endpoint(t)[1] for t in read_json(directory/'foreign/node.json')['targets'].values()}
                     if set(foreign_ports)&occupied:raise ValueError('foreign panel or pairing port conflicts with a tunnel listener or origin')
                     summary['firewall']['foreign']['tcp']=sorted(set(summary['firewall']['foreign']['tcp']+foreign_ports))
                 summary['firewall']['iran']['tcp'] = sorted(set(summary['firewall']['iran']['tcp']+[endpoint(live['panel']['listen'])[1]]))
@@ -492,13 +545,14 @@ def application(worker):
             return web.json_response({'error': 'SSH or prerequisite check failed. Verify authorization, fingerprint and connectivity; private worker log contains details.'}, status=502)
         except OSError:
             return web.json_response({'error': 'Controller resource or network unavailable'}, status=503)
-    app = web.Application(client_max_size=16384, middlewares=[errors])
+    app = web.Application(client_max_size=65536, middlewares=[errors])
     async def state(request): return web.json_response(worker.state())
     async def profiles(request): return web.json_response(await asyncio.to_thread(worker.add_profile, await request.json()), status=201)
     async def pair(request): return web.json_response(await asyncio.to_thread(worker.pair,await request.json()),status=201)
     async def preview(request): return web.json_response(await asyncio.to_thread(worker.preview, await request.json()), status=201)
     async def start(request): return web.json_response(await worker.start(await request.json()), status=202)
-    app.add_routes([web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start)])
+    async def paqet_action(request):return web.json_response(await worker.paqet_action(await request.json()))
+    app.add_routes([web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
     async def cleanup(app):
         if worker.task: await worker.task
     app.on_cleanup.append(cleanup)

@@ -175,21 +175,33 @@ def reverse_config(role, engine, iran, port, token, mappings):
     return "\n".join(lines)+"\n"
 
 
-def paqet_config(role, iran, foreign, port, token, mappings):
+def paqet_config(role, iran, foreign, port, token, mappings, settings=None):
+    from .paqet import options
+    settings=options(settings)
     # JSON is a YAML subset; generated file is accepted by Paqet's YAML parser.
     host = iran if role == "iran" else foreign
-    config = {"role":"client" if role=="iran" else "server","log":{"level":"warn"},
-              "network":{"interface":"AUTO","ipv4":{"addr":host+":"+str(0 if role=="iran" else port),"router_mac":"AUTO"}},
-              "transport":{"protocol":"kcp","conn":2,"kcp":{"mode":"normal","mtu":1150,"block":"aes-128-gcm","key":token}}}
+    family='ipv'+str(ipaddress.ip_address(host).version)
+    address=f'[{host}]' if family=='ipv6' else host
+    config = {"role":"client" if role=="iran" else "server","log":{"level":settings['log_level']},
+              "network":{"interface":"AUTO",family:{"addr":address+":"+str(0 if role=="iran" else port),"router_mac":"AUTO"}},
+              "transport":{"protocol":"kcp","conn":settings['conn'],"kcp":{**settings['kcp'],'key':settings.get('key',token)}}}
+    config['network']['tcp']={k:settings[k] for k in ('local_flag','remote_flag') if k in settings}
+    if 'pcap_sockbuf' in settings:config['network']['pcap']={'sockbuf':settings['pcap_sockbuf']}
     if role == "iran":
-        config["server"] = {"addr":foreign+":"+str(port)}
+        foreign_addr=f'[{foreign}]' if ':' in foreign else foreign
+        config["server"] = {"addr":foreign_addr+":"+str(port)}
         config["forward"] = [{"listen":f"127.0.0.1:{local}","target":target,"protocol":"tcp"} for _,local,target in mappings]
+        config['forward']+=settings['forwards']
+        if settings['socks5']:config['socks5']=settings['socks5']
     else:
         config["listen"] = {"addr":":"+str(port)}
     return json.dumps(config,indent=2)+"\n"
 
 
-def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090):
+def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090, paqet_options=None):
+    from .paqet import options, safe_options
+    if paqet_options is not None and 'paqet' not in transports:raise ValueError('Paqet settings require the Paqet carrier')
+    paqet_settings=options(paqet_options) if 'paqet' in transports else None
     if not transports or len(set(transports)) != len(transports) or not set(transports) <= set(TRANSPORTS):
         raise ValueError("select unique supported transports")
     if set(transports) & EXPERIMENTAL and not experimental:
@@ -198,11 +210,13 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     endpoint(foreign+":443" if ':' not in foreign else '['+foreign+']:443')
     if "paqet" in transports:
         for host in [iran,foreign]:
-            if ipaddress.ip_address(host).version != 4:
-                raise ValueError("automatic Paqet setup needs literal public IPv4 addresses")
+            ipaddress.ip_address(host)
+        if ipaddress.ip_address(iran).version!=ipaddress.ip_address(foreign).version:
+            raise ValueError('Paqet peers must use the same address family')
         if paqet_port < 1024 or paqet_port in (8080,8443,19090) or not paqet_port <= 65535:
             raise ValueError("Paqet needs a dedicated non-standard high port")
-    if not services or len(services)>40:
+    native_only=not services and transports==['paqet'] and bool(paqet_settings['forwards'] or paqet_settings['socks5'])
+    if (not services and not native_only) or len(services)>40:
         raise ValueError("use between 1 and 40 TCP services")
     ids=set()
     for service in services:
@@ -223,12 +237,22 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     relay_base=base+1000
     relay_transports=[t for t in transports if t not in ('browser-wss','donino-mux','donino-continuum')]
     iran_ports=[endpoint(s['listen'])[1] for s in services]+[panel_port]
+    paqet_extra_tcp=[];paqet_extra_udp=[]
+    if paqet_settings:
+        paqet_extra_tcp=[endpoint(r['listen'])[1] for r in paqet_settings['forwards'] if r['protocol']=='tcp']+[endpoint(r['listen'])[1] for r in paqet_settings['socks5']]
+        paqet_extra_udp=[endpoint(r['listen'])[1] for r in paqet_settings['forwards'] if r['protocol']=='udp']
+        iran_ports+=paqet_extra_tcp
+        if set(paqet_extra_udp)&{carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic'}:raise ValueError('Paqet UDP listener conflicts with QUIC')
     # Target port aliases are valid, but the health responder or a public
     # wildcard listener must never conflict with an existing origin listener.
-    target_ports={endpoint(s['target'])[1] for s in services}
+    native_tcp={f'paqet-native-{i}':r['target'] for i,r in enumerate(paqet_settings['forwards']) if r['protocol']=='tcp'} if paqet_settings else {}
+    if ids & set(native_tcp):raise ValueError('reserved Paqet native target ID')
+    target_ports={endpoint(s['target'])[1] for s in services}|{endpoint(t)[1] for t in native_tcp.values()}
     if health_port in target_ports:
         raise ValueError('foreign health port conflicts with an origin service')
     foreign_ports=[health_port]+list(target_ports)
+    if paqet_settings and health_port>=65535:raise ValueError('Paqet UDP health port is out of bounds')
+    if paqet_settings and health_port+1 in {endpoint(r['target'])[1] for r in paqet_settings['forwards'] if r['protocol']=='udp'}:raise ValueError('Paqet UDP health conflicts with an origin')
     if relay_transports:
         foreign_ports.extend(relay_base+j for j in range(len(services)))
     for i,t in enumerate(transports):
@@ -244,6 +268,12 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     for ports in [iran_ports,foreign_ports]:
         if len(ports)!=len(set(ports)) or any(p<1 or p>65535 for p in ports):
             raise ValueError('port ranges on the same node overlap or are out of bounds')
+    if paqet_settings:
+        udp_probe_port=base+transports.index('paqet')*100+51
+        if udp_probe_port in paqet_extra_udp or udp_probe_port>65535:raise ValueError('Paqet UDP health listener conflicts or is out of bounds')
+        source=paqet_settings['network'].get('iran',{}).get('source_port',0)
+        if source:iran_ports.append(source)
+        if len(iran_ports)!=len(set(iran_ports)):raise ValueError('Paqet source port conflicts with a listener')
     output = Path(output)
     if output.exists():
         raise ValueError("plan output already exists; use a new private directory")
@@ -310,7 +340,11 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 binary='frps' if role=='iran' else 'frpc'
                 command=f'{OPT}/bin/{binary} -c {ETC}/{file}'
             elif t=='paqet':
-                text=paqet_config(role,iran,foreign,port,token,mappings)
+                text=paqet_config(role,iran,foreign,port,token,mappings,paqet_settings)
+                if role=='iran':
+                    if local_base+51 in paqet_extra_udp or local_base+51>65535:raise ValueError('Paqet UDP health listener conflicts or is out of bounds')
+                    cfg=json.loads(text);cfg['forward'].append({'listen':f'127.0.0.1:{local_base+51}','target':f'127.0.0.1:{health_port+1}','protocol':'udp'})
+                    text=json.dumps(cfg,indent=2)+'\n';paths[-1]['udp_health']=f'127.0.0.1:{local_base+51}'
                 command=f'{OPT}/bin/paqet run -c {ETC}/{file}'
             else:
                 text=reverse_config(role,engine,iran,port,token,mappings)
@@ -324,7 +358,9 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 text=text.replace('CapabilityBoundingSet=CAP_NET_BIND_SERVICE','CapabilityBoundingSet=')
                 text=text.replace('MemoryMax=768M','MemoryMax=1536M')
                 text=text.replace('RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX','RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK')
-            if t=='paqet' and role=='foreign':
+            if t=='paqet' and (role=='foreign' or paqet_settings['network'].get('iran',{}).get('source_port')):
+                raw_peer=iran if role=='foreign' else foreign
+                raw_port=port if role=='foreign' else paqet_settings['network']['iran']['source_port']
                 text=text.replace('After=network-online.target','After=network-online.target donino-link-raw.service\nRequires=donino-link-raw.service')
                 raw=f'''[Unit]
 Description=Donino Link scoped Paqet rules
@@ -332,8 +368,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=true
-ExecStart={OPT}/venv/bin/python -m donino_link.raw_rules apply --peer {iran} --port {port}
-ExecStop={OPT}/venv/bin/python -m donino_link.raw_rules remove --peer {iran} --port {port}
+ExecStart={OPT}/venv/bin/python -m donino_link.raw_rules apply --peer {raw_peer} --port {raw_port}
+ExecStop={OPT}/venv/bin/python -m donino_link.raw_rules remove --peer {raw_peer} --port {raw_port}
 [Install]
 WantedBy=multi-user.target
 '''
@@ -361,17 +397,34 @@ WantedBy=multi-user.target
                 'paths':paths,'policy':{'probe_interval':3,'probe_timeout':2,'failures':3,'recoveries':2,'connect_timeout':2,'idle_timeout':300,'max_connections':2048},
                 'panel':{'listen':'127.0.0.1:8090','credentials_file':f'{ETC}/admin.json','api_token_file':f'{ETC}/api-token'},'state_db':'/var/lib/donino-link/state.sqlite3'})
     atomic_json(output/'foreign'/'node.json',{'schema':1,'role':'foreign','health_key':health_key,'health_listen':f'127.0.0.1:{health_port}',
-                'targets':{s['id']:s['target'] for s in services}})
+                'targets':{**{s['id']:s['target'] for s in services},**native_tcp}})
     atomic_json(output/'iran'/'admin.json',password_record(password))
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
                     'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]},
                     'listeners': ([{'protocol':'tcp','port':p} for p in iran_ports] + [{'protocol':'udp','port':carrier_port(i,t)} for i,t in enumerate(transports) if t=='frp-quic']) if role=='iran' else [{'protocol':'tcp','port':p} for p in foreign_ports if p not in target_ports],
-                    'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
+                    'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None,
+                    'paqet_network':paqet_settings['network'].get(role,{}) if paqet_settings else {}})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,
              'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services],
                                   'udp':[carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']},
                                   'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]}}}
+    if paqet_settings:
+        summary['paqet']=safe_options(paqet_settings)
+        for protocol,ports in [('tcp',paqet_extra_tcp),('udp',paqet_extra_udp)]:
+            summary['firewall']['iran'][protocol]+=ports
+        for role in ('iran','foreign'):
+            install=json.loads((output/role/'install.json').read_text())
+            if role=='iran':
+                for protocol,ports in [('tcp',paqet_extra_tcp),('udp',paqet_extra_udp)]:install['public_ports'][protocol]=sorted(set(install['public_ports'][protocol]+ports))
+                install['listeners'] += [{'protocol':'udp','port':p} for p in paqet_extra_udp]
+                install['listeners'].append({'protocol':'udp','port':base+transports.index('paqet')*100+51})
+                if native_only:
+                    cfg=json.loads((output/'iran/node.json').read_text());cfg['native_only']=True;atomic_json(output/'iran/node.json',cfg)
+            else:
+                install['listeners'].append({'protocol':'udp','port':health_port+1})
+                cfg=json.loads((output/'foreign/node.json').read_text());cfg['udp_health_listen']=f'127.0.0.1:{health_port+1}';atomic_json(output/'foreign/node.json',cfg)
+            atomic_json(output/role/'install.json',install)
     atomic_json(output/'plan.json',summary)
     return summary

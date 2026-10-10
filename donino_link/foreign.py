@@ -80,6 +80,9 @@ class ForeignMonitor:
         rows=[]
         for p in self.paths.values():
             row=p.snapshot();row.update(observation='fresh' if fresh else 'unknown',health_source='Iran signed round-trip probe')
+            if p.config['id']=='paqet':
+                seen=next((v for v in telemetry.get('probes',[]) if v['path']=='paqet'),{}) if fresh else {}
+                row['udp_ok']=seen.get('udp_ok');row['udp_latency_ms']=seen.get('udp_latency_ms')
             if not fresh:row['healthy']=False
             if p.config['id']=='donino-continuum':
                 local=next((u for u in self.units if u['unit']=='donino-link-donino-continuum.service' and u['active']),None)

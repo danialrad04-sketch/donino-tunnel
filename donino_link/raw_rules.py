@@ -5,8 +5,9 @@ import subprocess
 
 
 def rule_specs(peer, port):
-    if ipaddress.ip_address(peer).version != 4 or not 1024 <= port <= 65535:
-        raise ValueError("Paqet rule needs an IPv4 peer and dedicated high port")
+    ipaddress.ip_address(peer)
+    if not 1024 <= port <= 65535:
+        raise ValueError("Paqet rule needs an IP peer and dedicated high port")
     tag=["-m","comment","--comment","donino-link-paqet"]
     return [
         ("raw","PREROUTING",["-p","tcp","-s",peer,"--dport",str(port),*tag,"-j","NOTRACK"]),
@@ -19,7 +20,7 @@ def change(action, peer, port):
     applied=[]
     try:
         for table,chain,spec in rule_specs(peer,port):
-            prefix=["iptables","-w","5","-t",table]
+            prefix=["ip6tables" if ipaddress.ip_address(peer).version==6 else "iptables","-w","5","-t",table]
             exists=subprocess.run(prefix+["-C",chain]+spec,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if exists.returncode not in (0,1):
                 raise RuntimeError("cannot inspect iptables rule")

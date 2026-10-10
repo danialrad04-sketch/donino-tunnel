@@ -212,7 +212,7 @@ class ForeignAgent:
         if not isinstance(probes,list) or len(probes)>len(names): raise ValueError('invalid probes')
         clean=[];seen=set()
         for row in probes:
-            strict_fields(row,['path','ok','latency_ms','services','error'],['path','ok'])
+            strict_fields(row,['path','ok','latency_ms','services','error','udp_ok','udp_latency_ms'],['path','ok'])
             if not isinstance(row['path'],str) or row['path'] not in names or row['path'] in seen or not isinstance(row['ok'],bool): raise ValueError('unknown probe path or duplicate')
             seen.add(row['path'])
             latency = row.get('latency_ms')
@@ -220,6 +220,12 @@ class ForeignAgent:
             services = row.get('services',{})
             if not isinstance(services,dict) or set(services)-set(config.get('targets',{})) or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
             clean.append({'path':row['path'],'ok':row['ok'],'latency_ms':latency,'services':services})
+            if ('udp_ok' in row or 'udp_latency_ms' in row) and (row['path']!='paqet' or 'udp_ok' not in row):raise ValueError('UDP observations belong to Paqet')
+            if row['path']=='paqet' and 'udp_ok' in row:
+                if type(row['udp_ok']) is not bool:raise ValueError('invalid UDP observation')
+                udp_ms=row.get('udp_latency_ms')
+                if udp_ms is not None and (type(udp_ms) not in (int,float) or not 0<=udp_ms<=60000):raise ValueError('invalid UDP latency')
+                clean[-1].update(udp_ok=row['udp_ok'],udp_latency_ms=udp_ms)
         data={'time':time.time(),'peer_id':pair['id'],'peer_name':pair['name'],'source':pair['source'],'probes':clean,'config_hash':body['config_hash']}
         # Authentication precedes this worker thread. Recheck while holding the
         # revocation lock so an already authenticated request cannot republish
@@ -247,17 +253,20 @@ class ForeignAgent:
         return {'released':True}
 
     def state(self):
+        from .paqet import status
         pairs=[{k:p[k] for k in ['id','name','source','created','revoked']} for p in self.pairs()]
         telemetry=read_json(self.root/'telemetry.json',None)
         if telemetry and not any(p['id']==telemetry.get('peer_id') and not p['revoked'] for p in pairs):telemetry=None
         return {'available':True,'agent_port':self.settings['port'],'paired':pairs,'lease':self.lease(),
                 'action_busy':self.action_busy,'actions':read_json(self.root/'actions.json',[]),
                 'pending_expires':read_json(self.root/'pending.json',{}).get('expires'),
-                'telemetry':telemetry}
+                'telemetry':telemetry,'paqet':status(self.live.parent)}
 
     async def action(self, body):
         strict_fields(body,['unit','action'],['unit','action'])
-        if body['action'] not in ('start','stop','restart','test'): raise ValueError('invalid unit action')
+        from .paqet import UNIT,DIAGNOSTICS,diagnostic
+        if body['action'] not in ('start','stop','restart','test',*DIAGNOSTICS): raise ValueError('invalid unit action')
+        if body['action'] in DIAGNOSTICS and body['unit']!=UNIT:raise ValueError('diagnostics are restricted to Paqet')
         units = read_json(self.live.parent/'install.json',{}).get('units',[])
         if body['action']=='test':
             if body['unit']!='all': raise ValueError('test uses all managed services')
@@ -279,6 +288,9 @@ class ForeignAgent:
                     results=await asyncio.gather(*(target_status(t) for t in cfg.get('targets',{}).values()))
                     record['targets']=dict(zip(cfg.get('targets',{}),results))
                     if not all(results): raise ValueError('some origin services are unavailable')
+                elif body['action'] in DIAGNOSTICS:
+                    record['result']=await asyncio.to_thread(diagnostic,body['action'],self.live.parent)
+                    if not record['result']['ok']:raise ValueError('Paqet diagnostic did not complete successfully')
                 else:
                     r=await asyncio.to_thread(subprocess.run,['systemctl',body['action'],body['unit']],capture_output=True,timeout=45)
                     if r.returncode: raise ValueError('systemd operation failed; check the unit journal')

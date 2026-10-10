@@ -104,6 +104,11 @@ def main():
             report['standalone_panels_and_automatic_ssh_pairing']=True
             report['unrelated_operator_ssh_key_preserved']=True
             spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet','donino-mux','donino-continuum'],'experimental':True,'open_ufw':True}
+            spec['paqet_options']={'conn':2,'kcp':{'mode':'normal','dshard':10,'pshard':3,'sndwnd':128,'rcvwnd':128},
+                                   'pcap_sockbuf':4194304,'local_flag':['PA'],'remote_flag':['PA'],
+                                   'forwards':[{'listen':'0.0.0.0:18084','target':'127.0.0.1:18082','protocol':'udp'},
+                                               {'listen':'127.0.0.1:18086','target':'127.0.0.1:18083','protocol':'tcp'}],
+                                   'socks5':[{'listen':'127.0.0.1:1080','username':'fixture','password':'fixture-socks-password'}]}
             preview=api('/api/provision/preview',spec)
             job=api('/api/provision/start',{'plan_id':preview['id'],'confirm_replace':True})
             original_job=job['id'];lost_panel=False
@@ -160,6 +165,30 @@ def main():
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
             report['results'].append({'installation':'eight-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            report['paqet_native']=json.loads(execute('iran','python3','/source/tests/systemd/paqet_client.py'))
+            assert api('/api/provision/paqet-action',{'action':'udp-test'})['ok']
+            version=api('/api/provision/paqet-action',{'action':'version'});assert version['ok'] and 'alpha.21' in version['output']
+            assert api('/api/provision/paqet-action',{'action':'logs'})['ok']
+            for role in ['iran','foreign']:
+                cfg=json.loads(execute(role,'cat','/etc/donino-link/current/transports/paqet.yaml'))
+                assert cfg['network']['tcp']['local_flag']==['PA'] and cfg['network']['pcap']['sockbuf']==4194304
+                assert cfg['transport']['kcp']['dshard']==10 and cfg['transport']['kcp']['pshard']==3
+            for action in ['version','dump']:
+                record=foreign_api('/api/foreign/action',{'unit':'donino-link-paqet.service','action':action})
+                for _ in range(30):
+                    current=next(r for r in foreign_api('/api/foreign/state')['actions'] if r['id']==record['id'])
+                    if current['status']!='running':break
+                    time.sleep(.5)
+                assert current['status']=='succeeded' and current['result']['ok'],current
+            for _ in range(30):
+                remote=foreign_api('/api/status');paqet_path=next(p for p in remote['paths'] if p['id']=='paqet')
+                if paqet_path.get('udp_ok') is True:break
+                time.sleep(1)
+            assert paqet_path.get('udp_ok') is True,paqet_path
+            safe=api('/api/provision/state');assert 'fixture-socks-password' not in json.dumps(safe)
+            assert safe['active_spec']['paqet_options']['socks5'][0]['authenticated']
+            report['paqet_management']={'fixed_command_diagnostics':True,'bounded_foreign_capture':True,
+                                       'signed_udp_health_on_both_panels':True,'advanced_config_preserved':True,'credentials_not_exposed':True}
             api('/api/action',{'action':'prefer','path':'donino-mux'})
             initial_mux=next(p for p in api('/api/status')['paths'] if p['id']=='donino-mux')
             def mux_payload(_):

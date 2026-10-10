@@ -19,6 +19,10 @@ async def serve(config):
         loop.add_signal_handler(sig,done.set)
     if config['role']=='foreign':
         server=await start_responder(config['health_listen'],config['health_key'],config.get('targets'))
+        udp=None
+        if config.get('udp_health_listen'):
+            from .udp_health import start
+            udp=await start(config['udp_health_listen'],config['health_key'])
         panel=None;monitor=None;store=None
         try:
             if 'panel' in config:
@@ -32,6 +36,7 @@ async def serve(config):
             if monitor:await monitor.stop()
             if store:store.close()
             server.close()
+            if udp:udp.close()
             await server.wait_closed()
         return
     store=Store(config['state_db'])
@@ -59,6 +64,13 @@ async def doctor(config):
         try:
             ms,stats=await probe(address,config['health_key'],5)
             rows.append({'path':name,'ok':True,'latency_ms':round(ms,2),'services':stats.get('services',{})})
+            path=next((p for p in config.get('paths',[]) if p['id']==name),{})
+            if path.get('udp_health'):
+                from .udp_health import probe as udp_probe
+                try:
+                    rows[-1]['udp_latency_ms']=await udp_probe(path['udp_health'],config['health_key'],5)
+                    rows[-1]['udp_ok']=True
+                except (OSError,asyncio.TimeoutError):rows[-1].update(udp_ok=False,ok=False,error='UDP probe failed')
         except (OSError,ValueError,KeyError,TypeError,asyncio.TimeoutError) as e:
             rows.append({'path':name,'ok':False,'error':type(e).__name__})
     return rows
@@ -73,7 +85,8 @@ def main():
     p=sub.add_parser('plan')
     p.add_argument('--iran',required=True)
     p.add_argument('--foreign',required=True)
-    p.add_argument('--service',action='append',required=True,help='id=listen,target, e.g. vpn=0.0.0.0:443,127.0.0.1:443')
+    p.add_argument('--service',action='append',help='id=listen,target, e.g. vpn=0.0.0.0:443,127.0.0.1:443')
+    p.add_argument('--paqet-options',help='private JSON file containing typed Paqet options')
     p.add_argument('--transport',action='append',choices=['frp-wss','frp-quic','backpack-wss','paqet','backhaul-wss','browser-wss','donino-mux','donino-continuum'])
     p.add_argument('--experimental',action='store_true')
     p.add_argument('--output',required=True)
@@ -140,13 +153,14 @@ def main():
         elif args.command=='plan':
             from .plan import make_plan
             services=[]
-            for value in args.service:
+            for value in args.service or []:
                 name,rest=value.split('=',1)
                 listen,target=rest.split(',',1)
                 endpoint(listen);endpoint(target)
                 services.append({'id':name,'listen':listen,'target':target})
             password=Path(args.password_file).read_text().rstrip('\r\n') if args.password_file else getpass.getpass('Admin password (12+ characters): ')
-            summary=make_plan(args.output,args.iran,args.foreign,services,args.transport or ['frp-wss','frp-quic'],password,args.experimental,args.base_port,args.carrier_base,args.health_port,args.paqet_port,args.browser_port)
+            settings=json.loads(Path(args.paqet_options).read_text()) if args.paqet_options else None
+            summary=make_plan(args.output,args.iran,args.foreign,services,args.transport or ['frp-wss','frp-quic'],password,args.experimental,args.base_port,args.carrier_base,args.health_port,args.paqet_port,args.browser_port,paqet_options=settings)
             print(json.dumps(summary,indent=2))
             print('Private plan created. Keep the entire plan directory out of git; certificates expire in 90 days.')
         elif args.command=='deploy':

@@ -24,6 +24,10 @@ async function main(){
       return;
     }
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='donino-continuum')?.textContent.includes('بازیابی موفق'));
+    await outside.locator('#paqet-manager').waitFor({state:'visible'});
+    await outside.locator('#paqet-actions').getByRole('button',{name:'نسخهٔ هسته',exact:true}).click();
+    await outside.waitForFunction(()=>document.querySelector('#paqet-output').textContent.includes('alpha.21'),{},{timeout:30000});
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='paqet')?.textContent.includes('UDP: رفت‌وبرگشت معتبر'));
     await outside.locator('#foreign-test').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-action-history').textContent.includes('موفق'),{},{timeout:45000});
     const quic=outside.locator('.foreign-unit').filter({hasText:'donino-link-frp-quic.service'});
@@ -64,12 +68,20 @@ async function main(){
     await iran.locator('#setup-details summary').first().click();
     await iran.waitForFunction(()=>document.querySelector('#setup-profile').options.length>=2&&document.querySelector('#setup-iran').value.length>0);
     if(await iran.locator('#foreign-node').isVisible()||!await iran.locator('#connection-code').isVisible()||await iran.locator('#connection-pin').isVisible())throw Error('wrong Iran pairing flow');
+    await iran.locator('#paqet-manager').waitFor({state:'visible'});
+    await iran.locator('#paqet-actions').getByRole('button',{name:'آزمون امضاشدهٔ UDP',exact:true}).click();
+    await iran.waitForFunction(()=>document.querySelector('#paqet-output').textContent.includes('UDP سالم'));
+    await iran.locator('#paqet-edit').click();
+    await iran.locator('#paqet-options').waitFor({state:'visible'});
+    if(await iran.locator('#paqet-forwards .paqet-row').count()!==2||await iran.locator('#paqet-socks .paqet-row').count()!==1)throw Error('saved Paqet settings not loaded');
+    if(await iran.locator('#paqet-key').inputValue()!==''||await iran.locator('#paqet-socks input[type=password]').inputValue()!=='')throw Error('Paqet secrets prefilled into DOM');
+    if(await iran.locator('#paqet-kcp-dshard').inputValue()!=='10')throw Error('FEC field not restored');
     await iran.locator('#setup').screenshot({path:'ui-role-results/iran-setup.png'});
     await iran.setViewportSize({width:390,height:844});
     await iran.locator('#setup').screenshot({path:'ui-role-results/iran-setup-mobile.png'});
     const iranOverflow=await iran.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     if(errors.length||foreignOverflow||iranOverflow)throw Error(JSON.stringify({errors,foreignOverflow,iranOverflow}));
-    console.log(JSON.stringify({real_role_panels:true,adaptive_toggle_and_reload_persistence:true,foreign_actual_health_test:true,foreign_code_generation:true,foreign_stop_start_actual_quic:true,prevent_panel_self_stop:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
+    console.log(JSON.stringify({real_role_panels:true,paqet_manager_and_udp_health:true,paqet_advanced_editor_secret_safe:true,adaptive_toggle_and_reload_persistence:true,foreign_actual_health_test:true,foreign_code_generation:true,foreign_stop_start_actual_quic:true,prevent_panel_self_stop:true,role_specific_controls:true,automatic_pairing_form:true,mobile_overflow:false,js_errors:errors}));
     if(process.env.DONINO_EMIT_SCREENSHOT==='1')for(const name of ['foreign-desktop','foreign-dark','foreign-mobile','iran-setup','iran-setup-mobile'])console.log('DONINO_ROLE_SCREENSHOT_'+name+':'+fs.readFileSync('ui-role-results/'+name+'.png').toString('base64'));
   }catch(error){
     if(outside)console.error('ROLE UI DIAGNOSTICS: '+JSON.stringify({errors,dom:await outside.evaluate(()=>({labels:[...document.querySelectorAll('.path-status')].map(e=>e.textContent),notice:document.querySelector('#notice').textContent,live:document.querySelector('#live').textContent})),status:await outside.evaluate(async()=>{const d=await (await fetch('/api/status')).json();return {role:d.role,telemetry_fresh:d.telemetry_fresh,paths:d.paths?.map(p=>({id:p.id,healthy:p.healthy,observation:p.observation}))};})}));

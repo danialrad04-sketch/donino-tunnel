@@ -85,6 +85,12 @@ class Gateway:
             path.quality.probe(latency,time.monotonic())
             path.latency_ms = latency if path.latency_ms is None else 0.3*latency + 0.7*path.latency_ms
             path.remote = remote
+            if path.config.get('udp_health'):
+                from .udp_health import probe as udp_probe
+                try:
+                    remote['udp_latency_ms']=await udp_probe(path.config['udp_health'],self.config['health_key'],self.policy['probe_timeout'])
+                    remote['udp_ok']=True
+                except (OSError,asyncio.TimeoutError):remote['udp_ok']=False
             path.successes += 1
             path.failures = 0
             path.error = ""

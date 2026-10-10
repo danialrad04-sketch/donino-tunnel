@@ -67,13 +67,15 @@ def load_config(path):
     if data["role"] == "foreign":
         if not loopback(data["health_listen"]):
             raise ValueError("foreign health responder must bind a literal loopback IP")
+        if data.get('udp_health_listen') and not loopback(data['udp_health_listen']):raise ValueError('UDP health must bind loopback')
         for target in data.get('targets',{}).values():
             if not loopback(target):
                 raise ValueError('foreign targets must be literal loopback')
         if 'panel' in data: validate_panel(data['panel'])
         return data
     if not data.get("services") or not data.get("paths"):
-        if data.get('bootstrap') is not True or data.get('services') != [] or data.get('paths') != []:
+        native=data.get('native_only') is True and data.get('services')==[] and len(data.get('paths',[]))==1 and data['paths'][0].get('id')=='paqet'
+        if not native and (data.get('bootstrap') is not True or data.get('services') != [] or data.get('paths') != []):
             raise ValueError("at least one service and one path are required")
     if not isinstance(data['services'],list) or not isinstance(data['paths'],list):
         raise ValueError("at least one service and one path are required")
@@ -93,6 +95,7 @@ def load_config(path):
         ids.add(p["id"])
         if not loopback(p["health"]):
             raise ValueError("path health must be loopback")
+        if p.get('udp_health') and not loopback(p['udp_health']):raise ValueError('UDP health must be loopback')
         if set(p["backends"]) != names:
             raise ValueError("every path needs every service")
         for value in p["backends"].values():

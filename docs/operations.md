@@ -55,7 +55,7 @@ rollback واحدها و symlinkهای همین پروژه را به release ق�
 
 ## Paqet
 
-Paqet تنها با `--experimental` و IPv4 عمومی واقعی. installer NIC، source IP و MAC دروازه را از route/neighbor کشف می‌کند؛ در صورت نبود اطلاعات توقف می‌کند. سه قانون iptables صرفاً برای peer و پورت اختصاصی و با tag `donino-link-paqet` اعمال می‌شوند؛ جدول‌ها flush نمی‌شوند. raw transport می‌تواند با فیلتر provider، NAT، policy مسیر و بسته‌های RST مشکل داشته باشد. آزمون systemd این پروژه probe امضاشدهٔ raw packet را بین دو node روی Docker bridge تأیید کرده؛ انتقال ۲ MiB در هر جهت با SHA256 و half-close نیز در همان محیط تأیید شده؛ مسیر واقعی WAN و ظرفیت تحت بار هنوز تأیید نشده‌اند.
+Paqet با `--experimental` و IP literal هم‌خانوادهٔ IPv4 یا IPv6. تنظیمات کامل، فوروارد مستقیم TCP/UDP و SOCKS5 در [راهنمای Paqet](paqet.md) آمده‌اند. installer NIC، source IP و MAC دروازه را از route/neighbor کشف می‌کند؛ در صورت نبود اطلاعات توقف می‌کند. سه قانون iptables صرفاً برای peer و پورت اختصاصی و با tag `donino-link-paqet` اعمال می‌شوند؛ جدول‌ها flush نمی‌شوند. raw transport می‌تواند با فیلتر provider، NAT، policy مسیر و بسته‌های RST مشکل داشته باشد. آزمون systemd این پروژه probe امضاشدهٔ raw packet را بین دو node روی Docker bridge تأیید کرده؛ انتقال ۲ MiB در هر جهت با SHA256 و half-close نیز در همان محیط تأیید شده؛ مسیر واقعی WAN و ظرفیت تحت بار هنوز تأیید نشده‌اند.
 
 ## BrowserLink
 
