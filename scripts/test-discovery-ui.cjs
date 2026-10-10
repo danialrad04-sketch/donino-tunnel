@@ -12,6 +12,7 @@ async function main(){
    await page.goto(process.env[role==='iran'?'DONINO_IRAN_URL':'DONINO_FOREIGN_URL']);
    await page.locator('#password').fill('systemd-fixture-password-123');await page.locator('#login-form button').click();
    await page.locator('#detected-panel').waitFor({state:'visible'});
+   if(await page.locator('#selected').textContent()!=='پایش نصب موجود'||await page.locator('#active').textContent()!=='—'||await page.locator('#traffic').textContent()!=='—')throw Error('bootstrap falsely reports imported tunnel failure or traffic');
    const unit=role==='iran'?'vendor-edge.service':'vendor-exit.service';
    await page.locator('.detected-service').filter({hasText:unit}).getByRole('button').click();
    await page.waitForFunction(()=>document.querySelector('#detected-health').textContent.includes('UDP: رفت‌وبرگشت امضاشده سالم'));

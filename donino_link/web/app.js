@@ -39,16 +39,16 @@ function render(d){
   const foreign=d.role==="foreign";configureRole(foreign);
   const healthy=d.paths.filter(p=>p.healthy&&p.mode==="enabled");
   $("healthy").textContent=fa(healthy.length)+" / "+fa(d.paths.length);
-  $("active").textContent=d.active===null?"—":fa(d.active);
+  $("active").textContent=d.bootstrap||d.active===null?"—":fa(d.active);
   const selected=foreign?healthy[0]:d.paths.find(p=>p.id===d.selected);
-  $("selected").textContent=d.paused?"ورودی جدید متوقف است":d.selected||"مسیر سالمی در دسترس نیست";
-  $("hero-description").textContent=d.preferred?"مسیر ترجیحی: "+d.preferred+" · در صورت خرابی، مسیر سالم بعدی انتخاب می‌شود.":"انتخاب خودکار فعال است؛ سلامت هر مسیر با پاسخ امضاشدهٔ سرور خارج بررسی می‌شود.";
+  $("selected").textContent=d.bootstrap?"پایش نصب موجود":d.paused?"ورودی جدید متوقف است":d.selected||"مسیر سالمی در دسترس نیست";
+  $("hero-description").textContent=d.bootstrap?"سرویس‌های فعلی را در بخش تشخیص مشاهده و مدیریت کن؛ هنوز مسیری از فرم نصب Donino فعال نشده است.":d.preferred?"مسیر ترجیحی: "+d.preferred+" · در صورت خرابی، مسیر سالم بعدی انتخاب می‌شود.":"انتخاب خودکار فعال است؛ سلامت هر مسیر با پاسخ امضاشدهٔ سرور خارج بررسی می‌شود.";
   $("latency").textContent=selected?.latency_ms!==null&&selected?.latency_ms!==undefined?selected.latency_ms.toFixed(1)+" ms":"—";
-  const total=foreign?(d.metrics?d.metrics.bytes_up+d.metrics.bytes_down:null):d.paths.reduce((sum,p)=>sum+p.bytes_up+p.bytes_down,0);
+  const total=d.bootstrap?null:foreign?(d.metrics?d.metrics.bytes_up+d.metrics.bytes_down:null):d.paths.reduce((sum,p)=>sum+p.bytes_up+p.bytes_down,0);
   $("traffic").textContent=total===null?"—":bytes(total);
   if(total!==null&&previousTraffic&&d.time>previousTraffic.time&&total>=previousTraffic.total){$("traffic-rate").textContent="نرخ مجموع دو جهت: "+bytes((total-previousTraffic.total)/(d.time-previousTraffic.time))+"/s";}
   previousTraffic=total===null?null:{time:d.time,total};
-  $("routing-mode").textContent=d.preferred?"مسیر ترجیحی":d.routing_strategy==="adaptive"?"هستهٔ تطبیقی":"انتخاب خودکار";
+  $("routing-mode").textContent=d.bootstrap?"تشخیص خودکار":d.preferred?"مسیر ترجیحی":d.routing_strategy==="adaptive"?"هستهٔ تطبیقی":"انتخاب خودکار";
   $("adaptive").textContent=d.routing_strategy==="adaptive"?"بازگشت به اولویت ثابت":"فعال‌کردن هستهٔ تطبیقی";$("adaptive").setAttribute("aria-pressed",String(d.routing_strategy==="adaptive"));
   $("path-summary").textContent=fa(d.paths.length)+" مسیر · "+fa(healthy.length)+" سالم و فعال";
   $("pause").textContent=d.paused?"ادامهٔ اتصال‌های جدید":"توقف اتصال‌های جدید";
@@ -85,12 +85,12 @@ function render(d){
     }
     return n;
   }));
-  $("counters").textContent="پذیرفته‌شده: "+fa(d.accepted)+" · ردشده: "+fa(d.rejected)+" · تغییر مسیر: "+fa(d.route_changes);
+  $("counters").textContent=d.bootstrap?"شمارندهٔ اتصال و ترافیک نصب بیرونی هنوز اندازه‌گیری نمی‌شود؛ وضعیت و سلامت آن در بخش تشخیص نمایش داده می‌شود.":"پذیرفته‌شده: "+fa(d.accepted)+" · ردشده: "+fa(d.rejected)+" · تغییر مسیر: "+fa(d.route_changes);
   $("event-list").replaceChildren(...d.events.map(e=>{const n=el("div",undefined,"event");n.append(el("span",eventNames[e.kind]||e.kind,"event-kind"),el("span",eventDescription(e),"event-detail"),el("time",new Date(e.time*1000).toLocaleString("fa-IR")));return n;}));
   if(!d.events.length)$("event-list").append(el("p","هنوز رویدادی ثبت نشده است.","empty-events"));
   $("updated").textContent="به‌روز هر ۳ ثانیه";
   if(foreign)renderForeign(d);
-  else if(d.bootstrap)notice("پنل ایران آماده است. ابتدا خارج را جفت‌سازی کن، سپس نقشهٔ تانل را بساز.");
+  else if(d.bootstrap)notice("پنل ایران آماده است؛ برای نصب فعلی از بخش تشخیص سرویس‌های موجود استفاده کن.");
   $("uptime").textContent="زمان فعالیت: "+fa(Math.floor(d.uptime/60))+" دقیقه";
 }
 function eventDescription(e){

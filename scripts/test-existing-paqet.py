@@ -22,7 +22,9 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
         execute(node,'systemctl','enable','--now',meta['unit'])
     def snapshot(node):
         return {'pid':execute(node,'systemctl','show','--value','--property=MainPID',units[node]).strip(),
-                'config':execute(node,'cat',files[node]),'firewall':execute(node,'ufw','show','added')}
+                'config':execute(node,'cat',files[node]),
+                'firewall':'\n'.join(line for line in execute(node,'ufw','show','added').splitlines() if 'fixture-' in line),
+                'raw_rules':'\n'.join(line for table in ('raw','mangle') for line in execute(node,'iptables','-t',table,'-S').splitlines() if '33535' in line)}
     before={n:snapshot(n) for n in units}
     assert all(int(r['pid'])>0 for r in before.values())
     def row(node):
@@ -84,7 +86,8 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
     pre_upgrade={n:snapshot(n) for n in units}
     for node in ('foreign','iran'):
         execute(node,'bash','/source/install-donino.sh','--upgrade')
-        assert snapshot(node)==pre_upgrade[node],'panel upgrade altered vendor Paqet'
+        after=snapshot(node)
+        assert after==pre_upgrade[node],'panel upgrade altered vendor fields: '+','.join(k for k in after if after[k]!=pre_upgrade[node][k])
     for _ in range(30):
         try:login();foreign_login();api('/api/provision/state');foreign_api('/api/foreign/state');break
         except (OSError,AssertionError):time.sleep(1)
