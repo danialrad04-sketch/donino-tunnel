@@ -17,6 +17,9 @@ Status: discovery in progress; not a production readiness declaration.
 - Q10: run one primary carrier and one lightweight standby; other carriers are enabled by explicit operator choice.
 - Q11: Iran runs only tunnel infrastructure. Foreign also hosts the existing VPN panel. The 1 GiB target must therefore account for panel/backend resource usage on foreign; actual baseline usage remains to be measured.
 - Q12: 50-user acceptance workload is mixed browsing, some downloads, video, games and calls, not 50 simultaneous bulk downloads.
+- Q13: existing foreign VPN panel is Pasarguard. Preserve its accounts, subscriptions, database and credentials; do not infer availability of a WireGuard provisioning API.
+- Q14: when safe memory/connection capacity is reached, preserve established connections, temporarily reject new connections and show a panel warning. This is admission-control behavior; arbitrary carrier/host outages can still interrupt established traffic.
+- Q15: upgrades of Donino and carrier engines are initiated by the operator, with health verification and automatic rollback on failure. No unattended update schedule is authorized.
 - Initial target: up to 50 simultaneous users.
 - User count is not TCP connection count; the capacity test must represent multiple flows per user.
 - Existing requests remain: role-specific Iran/foreign panels, automated two-node installation, HTTP panel support.
@@ -37,7 +40,7 @@ Status: discovery in progress; not a production readiness declaration.
 2. CPU/RAM, OS, carrier concurrency and role workload profile settled. Pending: measured foreign panel/backend baseline resource use.
 3. Acceptable gameplay/call latency, loss behavior, and recovery window.
 4. Scope of direct UDP versus UDP encapsulated by an existing proxy backend.
-5. Prioritization between bulk transfers and interactive traffic; update policy and identification of the existing VPN panel.
+5. Operator-controlled update policy and Pasarguard identity settled. Pending: how WireGuard peer configuration is delivered without taking ownership of subscription management.
 
 ## Acceptance work after the relevant decisions
 
