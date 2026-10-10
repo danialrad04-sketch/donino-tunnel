@@ -33,7 +33,13 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
         detected={n:row(n) for n in units}
         if all(detected.values()):break
         time.sleep(1)
-    assert all(detected.values()),'independent Paqet not detected'
+    if not all(detected.values()):
+        for node in units:
+            call=api if node=='iran' else foreign_api
+            url='/api/provision/state' if node=='iran' else '/api/foreign/state'
+            print('DETECTION '+node+': '+json.dumps(call(url)['inventory']))
+            print(execute(node,'systemctl','show','--property=Id,MainPID,ActiveState,ExecStart',units[node]))
+        raise AssertionError('independent Paqet not detected')
     for node,r in detected.items():
         assert r['engine']=='paqet' and r['active'] and r['editable'] and not r['management_enabled'] and not r['managed_by_donino'],r
         public=json.dumps(r);assert 'external-fixture-key-' not in public and 'external-socks-password' not in public

@@ -123,7 +123,7 @@ class ForeignAgent:
         self.attempts = OrderedDict()
         self.tasks = set()
         from .discovery import Inventory
-        self.inventory=Inventory(self.root,self.live);self.probe_udp=None
+        self.inventory=Inventory(self.root,self.live);self.probe_udp=None;self.probe_udp_lock=asyncio.Lock()
         self.action_busy = False
         self.fingerprint = self.settings['fingerprint']
 
@@ -289,9 +289,10 @@ class ForeignAgent:
         strict_fields(body,['id'],['id']);row=await asyncio.to_thread(self.inventory.select,body['id'])
         if row.get('role')!='server':raise ValueError('foreign Paqet server required')
         cfg=load_config(self.live)
-        if not self.probe_udp:
-            from .udp_health import Responder
-            self.probe_udp=(await asyncio.get_running_loop().create_datagram_endpoint(lambda:Responder(cfg['health_key']),local_addr=('127.0.0.1',0)))[0]
+        async with self.probe_udp_lock:
+            if not self.probe_udp:
+                from .udp_health import Responder
+                self.probe_udp=(await asyncio.get_running_loop().create_datagram_endpoint(lambda:Responder(cfg['health_key']),local_addr=('127.0.0.1',0)))[0]
         return {'key':cfg['health_key'],'tcp':cfg['health_listen'],'udp':'127.0.0.1:'+str(self.probe_udp.get_extra_info('sockname')[1])}
 
     def external_observation(self,pair,body):

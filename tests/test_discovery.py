@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import yaml
-from donino_link.discovery import Inventory,read_config,safe,restore_secrets,validate_paqet,config_arg,known_engine
+from donino_link.discovery import Inventory,read_config,safe,restore_secrets,validate_paqet,config_arg,known_engine,root_owned,bounded
 from donino_link.config import atomic_json
 
 
@@ -26,8 +26,11 @@ class DiscoveryTests(unittest.TestCase):
         self.binary.write_bytes(b'fixture');self.binary.chmod(0o755)
         self.inventory=Inventory(self.root,self.root/'node.json');self.unit='vendor-custom.service'
         self.commands=[];self.fail_restart=False
+        # The unit fixture runs as the CI runner, while the systemd fixture
+        # below verifies real root ownership. Preserve real file modes/IO here.
+        self.permission_mock=patch('donino_link.discovery.root_owned',side_effect=lambda info:info.st_uid==os.geteuid() and not info.st_mode&0o022);self.permission_mock.start()
         self.mock=patch('donino_link.discovery.bounded',side_effect=self.command);self.mock.start()
-    def tearDown(self):self.mock.stop();self.tmp.cleanup()
+    def tearDown(self):self.mock.stop();self.permission_mock.stop();self.tmp.cleanup()
     def command(self,argv,**kwargs):
         self.commands.append(argv)
         if argv[0]=='journalctl':return 0,json.dumps({'__CURSOR':'s=123;i=12;b=123','__REALTIME_TIMESTAMP':'123000','MESSAGE':'private-fixture-key-123456789 private-password-a'})+'\n',False
@@ -39,6 +42,33 @@ class DiscoveryTests(unittest.TestCase):
         return 0,'',False
     def selected(self):
         return self.inventory.scan(True)['services'][0]
+
+    def test_root_ownership_policy_rejects_nonroot_and_writable_files(self):
+        from types import SimpleNamespace
+        self.assertTrue(root_owned(SimpleNamespace(st_uid=0,st_mode=0o100600)))
+        self.assertFalse(root_owned(SimpleNamespace(st_uid=1000,st_mode=0o100600)))
+        self.assertFalse(root_owned(SimpleNamespace(st_uid=0,st_mode=0o100620)))
+        self.assertFalse(root_owned(SimpleNamespace(st_uid=0,st_mode=0o100602)))
+
+    def test_bounded_real_commands_wait_for_clean_exit_and_cap_output(self):
+        import sys
+        for _ in range(5):
+            code,output,truncated=bounded([sys.executable,'-c',"print('ready')"],seconds=2)
+            self.assertEqual(code,0);self.assertEqual(output,'ready\n');self.assertFalse(truncated)
+        code,output,truncated=bounded([sys.executable,'-c',"print('x'*5000)"],seconds=2,limit=100)
+        self.assertTrue(truncated);self.assertEqual(len(output),100)
+
+    def test_uninstantiated_template_and_partial_show_failure_do_not_hide_paqet(self):
+        normal=self.command
+        def partially_fails(argv,**kwargs):
+            code,output,truncated=normal(argv,**kwargs)
+            if argv[1]=='list-unit-files':output+='getty@.service enabled\n'
+            if argv[1]=='show':
+                self.assertNotIn('getty@.service',argv);code=1
+            return code,output,truncated
+        with patch('donino_link.discovery.bounded',side_effect=partially_fails):
+            row=self.selected();self.assertEqual(row['engine'],'paqet')
+            self.assertIn('Some systemd',self.inventory.public()['error'])
 
     def test_scan_reads_yaml_and_only_runs_read_operations(self):
         row=self.selected()
@@ -120,7 +150,10 @@ class DiscoveryTests(unittest.TestCase):
         self.file.write_bytes(before+b'\n# operator changed later\n');later=self.file.read_bytes()
         self.inventory.recover();self.assertEqual(self.file.read_bytes(),later)
         self.assertIn('conflicts',self.inventory.public()['error'])
-        self.file.write_bytes(before);self.inventory.recover();self.assertFalse((self.root/'import-edit.json').exists())
+        self.file.write_bytes(before)
+        marker=json.loads((self.root/'import-edit.json').read_text());backup=Path(marker['backup']);backup.write_bytes(b'corrupt')
+        self.inventory.recover();self.assertIn('checksum',self.inventory.public()['error']);self.assertEqual(self.file.read_bytes(),before)
+        backup.write_bytes(before);self.inventory.recover();self.assertFalse((self.root/'import-edit.json').exists())
 
     def test_health_expires_and_wildcard_native_listeners_validate(self):
         row=self.selected();self.inventory.health[row['id']]={'time':0,'tcp_ok':True,'udp_ok':True}

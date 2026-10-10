@@ -32,16 +32,19 @@ REDACTED='[redacted]'
 def bounded(argv,seconds=5,limit=262144):
     raw=bytearray();deadline=time.monotonic()+seconds
     with subprocess.Popen(argv,stdout=subprocess.PIPE,stderr=subprocess.STDOUT) as p:
-        selector=selectors.DefaultSelector();selector.register(p.stdout,selectors.EVENT_READ)
+        eof=False;selector=selectors.DefaultSelector();selector.register(p.stdout,selectors.EVENT_READ)
         try:
             while len(raw)<limit and time.monotonic()<deadline:
                 if selector.select(min(.2,max(0,deadline-time.monotonic()))):
                     chunk=p.stdout.read1(min(8192,limit-len(raw)))
-                    if not chunk:break
+                    if not chunk:eof=True;break
                     raw.extend(chunk)
                 elif p.poll() is not None:break
         finally:
             selector.close()
+            if eof and p.poll() is None:
+                try:p.wait(timeout=max(.01,deadline-time.monotonic()))
+                except subprocess.TimeoutExpired:pass
             if p.poll() is None:
                 p.terminate()
                 try:p.wait(timeout=1)
@@ -180,6 +183,10 @@ def validate_paqet(cfg):
     return cfg
 
 
+def root_owned(info):
+    return info.st_uid==0 and not info.st_mode&0o022
+
+
 def synchronized(method):
     @wraps(method)
     def wrapped(self,*args,**kwargs):
@@ -189,7 +196,7 @@ def synchronized(method):
 
 class Inventory:
     def __init__(self,root,live):
-        self.root,self.live=Path(root),Path(live);self.rows={};self.checked=0;self.error='';self.recovery_error='';self.health={};self.lock=threading.RLock()
+        self.root,self.live=Path(root),Path(live);self.rows={};self.checked=0;self.last_scan_time=0;self.error='';self.recovery_error='';self.health={};self.lock=threading.RLock()
     @synchronized
     def scan(self,force=False):
         if not force and time.monotonic()-self.checked<8:return self.public()
@@ -201,9 +208,12 @@ class Inventory:
             # Include transient/running instances that have no standalone unit file.
             code,running,_=bounded(['systemctl','list-units','--type=service','--all','--plain','--no-legend','--no-pager'])
             if not code:units=sorted(set(units)|{line.split()[0] for line in running.splitlines() if line.split() and UNIT_RE.fullmatch(line.split()[0])})[:512]
+            units=[unit for unit in units if not unit.endswith('@.service')]
+            partial=False
             if units:
                 code,details,truncated=bounded(['systemctl','show','--no-pager','--property=Id,ExecStart,WorkingDirectory,MainPID,ActiveState,SubState,UnitFileState,FragmentPath,MemoryCurrent,NRestarts,ControlGroup',*units],limit=1048576)
-                if code or truncated:raise ValueError('systemd details are unavailable or too large')
+                if truncated or (code and not re.search(r'^Id=',details,re.M)):raise ValueError('systemd details are unavailable or too large')
+                partial=bool(code)
                 for block in details.split('\n\n'):
                     props=dict(line.split('=',1) for line in block.splitlines() if '=' in line)
                     unit=props.get('Id','')
@@ -246,8 +256,8 @@ class Inventory:
                         except (ValueError,KeyError,TypeError,OSError) as error:
                             row['editable']=False;row['config_error']=str(error) if isinstance(error,ValueError) else 'configuration is inaccessible or unsupported'
                     rows[identity]=row
-            self.rows=rows;self.error=''
-            self.processes()
+            self.rows=rows;self.error='Some systemd units could not be inspected; discovered units are shown.' if partial else ''
+            self.processes();self.last_scan_time=time.time()
         except (OSError,ValueError,subprocess.SubprocessError) as error:
             self.error=str(error) if isinstance(error,ValueError) else 'systemd detection failed'
         return self.public()
@@ -289,7 +299,7 @@ class Inventory:
             observation=self.health.get(row['id'])
             public['health']=observation if observation and row['active'] and observation.get('revision')==row.get('revision') and 0<=time.time()-observation['time']<45 else None
             rows.append(public)
-        return {'services':rows,'checked_at':time.time(),'error':self.recovery_error or self.error,'mode':'passive; no service mutations'}
+        return {'services':rows,'checked_at':self.last_scan_time,'error':self.recovery_error or self.error,'mode':'passive; no service mutations'}
     @synchronized
     def select(self,identity,managed=False):
         if not isinstance(identity,str) or not re.fullmatch('[a-f0-9]{24}',identity):raise ValueError('invalid detected service ID')
@@ -308,7 +318,7 @@ class Inventory:
             if not row.get('editable') or not row.get('binary') or not Path(row['binary']).is_file():raise ValueError('direct Paqet executable/config required for management')
             for file in (Path(row['binary']),Path(row['config_path'])):
                 info=file.stat()
-                if info.st_uid!=0 or info.st_mode&0o022:raise ValueError('management requires root-owned files without group/world write access')
+                if not root_owned(info):raise ValueError('management requires root-owned files without group/world write access')
             grants[identity]=row['descriptor']
         else:grants.pop(identity,None)
         atomic_json(self.root/'adopted-services.json',grants)
@@ -354,9 +364,14 @@ class Inventory:
         file=Path(row['config_path']);old=file.read_bytes()
         if hashlib.sha256(old).hexdigest()!=revision:raise ValueError('configuration changed while saving')
         info=file.stat()
-        if info.st_uid!=0 or info.st_mode&0o022:raise ValueError('configuration permissions changed')
+        if not root_owned(info):raise ValueError('configuration permissions changed')
         backup=self.root/'import-backups'/row['id'];backup.mkdir(parents=True,exist_ok=True,mode=0o700)
-        stamp=str(time.time_ns());(backup/(stamp+'.original')).write_bytes(old);(backup/(stamp+'.original')).chmod(0o600)
+        stamp=str(time.time_ns());original=backup/(stamp+'.original')
+        with original.open('wb') as stream:
+            os.fchmod(stream.fileno(),0o600);stream.write(old);stream.flush();os.fsync(stream.fileno())
+        directory=os.open(backup,os.O_DIRECTORY)
+        try:os.fsync(directory)
+        finally:os.close(directory)
         new=(json.dumps(cfg,ensure_ascii=False,indent=2)+'\n').encode()
         journal={'old_hash':hashlib.sha256(old).hexdigest(),'new_hash':hashlib.sha256(new).hexdigest(),'unit':row['unit'],'config_path':str(file),'backup':str(backup/(stamp+'.original')),'active':row['active'],'mode':stat.S_IMODE(info.st_mode),'uid':info.st_uid,'gid':info.st_gid}
         marker=self.root/'import-edit.json';atomic_json(marker,journal)
@@ -391,7 +406,11 @@ class Inventory:
         if current not in (journal.get('old_hash'),journal.get('new_hash')):
             self.recovery_error='pending edit recovery conflicts with a later operator change; no configuration was overwritten'
             return
-        replace_bytes(file,Path(journal['backup']).read_bytes(),info)
+        original=Path(journal['backup']).read_bytes()
+        if hashlib.sha256(original).hexdigest()!=journal.get('old_hash'):
+            self.recovery_error='edit recovery backup checksum mismatch; no configuration was overwritten'
+            return
+        replace_bytes(file,original,info)
         if journal['active']:
             code,_,_=bounded(['systemctl','restart',journal['unit']],seconds=30)
             if code:
