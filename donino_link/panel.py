@@ -50,9 +50,9 @@ class Panel:
             web.post('/api/provision/pair',self.provision),
             web.post('/api/provision/preview',self.provision),
             web.post('/api/provision/start',self.provision),
-            web.post('/api/provision/paqet-action',self.provision),
+            web.post('/api/provision/paqet-action',self.provision),web.post('/api/provision/imported-action',self.provision),
             web.get('/api/foreign/state',self.foreign),web.post('/api/foreign/code',self.foreign),
-            web.post('/api/foreign/revoke',self.foreign),web.post('/api/foreign/action',self.foreign),
+            web.post('/api/foreign/revoke',self.foreign),web.post('/api/foreign/action',self.foreign),web.post('/api/foreign/imported-action',self.foreign),
         ])
 
     @web.middleware

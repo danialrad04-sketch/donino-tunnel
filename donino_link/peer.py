@@ -122,6 +122,8 @@ class ForeignAgent:
         self.lock = threading.RLock()
         self.attempts = OrderedDict()
         self.tasks = set()
+        from .discovery import Inventory
+        self.inventory=Inventory(self.root,self.live);self.probe_udp=None
         self.action_busy = False
         self.fingerprint = self.settings['fingerprint']
 
@@ -257,10 +259,57 @@ class ForeignAgent:
         pairs=[{k:p[k] for k in ['id','name','source','created','revoked']} for p in self.pairs()]
         telemetry=read_json(self.root/'telemetry.json',None)
         if telemetry and not any(p['id']==telemetry.get('peer_id') and not p['revoked'] for p in pairs):telemetry=None
+        for identity,observation in list(self.inventory.health.items()):
+            if observation.get('peer_id') and not any(p['id']==observation['peer_id'] and not p['revoked'] for p in pairs):self.inventory.health.pop(identity,None)
         return {'available':True,'agent_port':self.settings['port'],'paired':pairs,'lease':self.lease(),
                 'action_busy':self.action_busy,'actions':read_json(self.root/'actions.json',[]),
                 'pending_expires':read_json(self.root/'pending.json',{}).get('expires'),
-                'telemetry':telemetry,'paqet':status(self.live.parent)}
+                'telemetry':telemetry,'inventory':self.inventory.scan(),'paqet':status(self.live.parent)}
+
+    async def imported_action(self,body):
+        strict_fields(body,['id','action','enabled','cursor','revision','config','ack_peer_change'],['id','action'])
+        op=body['action']
+        if op=='logs':return await asyncio.to_thread(self.inventory.logs,body['id'],body.get('cursor'))
+        if op=='inspect':return await asyncio.to_thread(self.inventory.scan,True)
+        if op not in ('manage','start','stop','restart','edit','test'):raise ValueError('invalid detected service action')
+        if op=='test':
+            row=await asyncio.to_thread(self.inventory.select,body['id'])
+            return next((r for r in self.inventory.public()['services'] if r['id']==row['id']),{}).get('health') or {'tcp_ok':None,'udp_ok':None,'reason':'Run the paired Iran round-trip test; local process state is not end-to-end health.'}
+        with self.lock:
+            if self.action_busy or self.lease():raise ValueError('node is busy installing or controlling a service')
+            self.action_busy=True
+        try:
+            if op=='manage':return await asyncio.to_thread(self.inventory.enable,body['id'],body.get('enabled'))
+            if op=='edit':return await asyncio.to_thread(self.inventory.edit,body['id'],body.get('revision'),body.get('config'),body.get('ack_peer_change',False))
+            return await asyncio.to_thread(self.inventory.control,body['id'],op)
+        finally:
+            with self.lock:self.action_busy=False
+
+    async def external_health(self,body):
+        strict_fields(body,['id'],['id']);row=await asyncio.to_thread(self.inventory.select,body['id'])
+        if row.get('role')!='server':raise ValueError('foreign Paqet server required')
+        cfg=load_config(self.live)
+        if not self.probe_udp:
+            from .udp_health import Responder
+            self.probe_udp=(await asyncio.get_running_loop().create_datagram_endpoint(lambda:Responder(cfg['health_key']),local_addr=('127.0.0.1',0)))[0]
+        return {'key':cfg['health_key'],'tcp':cfg['health_listen'],'udp':'127.0.0.1:'+str(self.probe_udp.get_extra_info('sockname')[1])}
+
+    def external_observation(self,pair,body):
+        strict_fields(body,['server_id','time','revision','key_id','tcp_ok','udp_ok','tcp_latency_ms','udp_latency_ms','tcp_error','udp_error','reason','meaning'],['server_id','key_id','tcp_ok','udp_ok'])
+        from .import_health import key_id
+        row=self.inventory.select(body['server_id'])
+        if row.get('role')!='server' or not key_id(row.get('config',{})) or body['key_id']!=key_id(row['config']):raise ValueError('probe belongs to another Paqet configuration')
+        for key in ('tcp_ok','udp_ok'):
+            if body[key] is not None and type(body[key]) is not bool:raise ValueError('invalid imported health observation')
+        clean={k:body[k] for k in ('tcp_ok','udp_ok')};clean.update(time=time.time(),peer_id=pair['id'],revision=row.get('revision'))
+        for k in ('tcp_latency_ms','udp_latency_ms'):
+            if k in body:
+                if type(body[k]) not in (int,float) or not 0<=body[k]<=60000:raise ValueError('invalid imported latency')
+                clean[k]=body[k]
+        with self.lock:
+            if not any(p['id']==pair['id'] and not p.get('revoked') for p in self.pairs()):raise web.HTTPUnauthorized()
+            self.inventory.health[row['id']]=clean
+        return {'accepted':True}
 
     async def action(self, body):
         strict_fields(body,['unit','action'],['unit','action'])
@@ -313,7 +362,7 @@ def application(agent, network=False):
         try:return await handler(request)
         except (ValueError,KeyError,TypeError) as error:return web.json_response({'error':str(error) if isinstance(error,ValueError) else 'invalid request'},status=400)
         except (OSError,subprocess.SubprocessError):return web.json_response({'error':'node operation failed; check the private service journal'},status=503)
-    app=web.Application(client_max_size=16384,middlewares=[errors])
+    app=web.Application(client_max_size=65536,middlewares=[errors])
     if network:
         async def dispatch(request):
             source=request.remote
@@ -321,20 +370,24 @@ def application(agent, network=False):
             if request.path=='/exchange': result=await asyncio.to_thread(agent.exchange,body,source)
             else:
                 pair=agent.authenticate(request.headers.get('Authorization',''),source)
-                if request.path=='/telemetry': result=await asyncio.to_thread(agent.telemetry,pair,body)
+                if request.path=='/inventory':result=await asyncio.to_thread(agent.inventory.scan,True)
+                elif request.path=='/external-health':result=await agent.external_health(body)
+                elif request.path=='/external-observation':result=await asyncio.to_thread(agent.external_observation,pair,body)
+                elif request.path=='/telemetry': result=await asyncio.to_thread(agent.telemetry,pair,body)
                 elif request.path=='/lease':result=agent.reserve(pair,body)
                 elif request.path=='/release':result=agent.release(pair,body)
                 else: result=await asyncio.to_thread(agent.revoke,pair['id'])
             return web.json_response(result)
-        for path in ['/exchange','/telemetry','/lease','/release','/revoke-self']:app.router.add_post(path,dispatch)
+        for path in ['/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation']:app.router.add_post(path,dispatch)
     else:
-        async def state(request):return web.json_response(agent.state())
+        async def state(request):return web.json_response(await asyncio.to_thread(agent.state))
         async def code(request):return web.json_response(agent.pairing_code())
         async def revoke(request):
             body=await request.json();strict_fields(body,['id'],['id'])
             return web.json_response(await asyncio.to_thread(agent.revoke,body['id']))
         async def action(request):return web.json_response(await agent.action(await request.json()),status=202)
-        app.add_routes([web.get('/state',state),web.post('/code',code),web.post('/revoke',revoke),web.post('/action',action)])
+        async def imported_action(request):return web.json_response(await agent.imported_action(await request.json()))
+        app.add_routes([web.post('/imported-action',imported_action),web.get('/state',state),web.post('/code',code),web.post('/revoke',revoke),web.post('/action',action)])
     return app
 
 
@@ -386,6 +439,7 @@ async def serve_agent():
     import grp,fcntl
     lock=(ROOT/'agent.lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     agent=ForeignAgent()
+    await asyncio.to_thread(agent.inventory.recover)
     # Repair a crash between recording a pairing/revocation and SSH reload.
     await asyncio.to_thread(agent.ssh_writer,agent.root,agent.pairs())
     records=read_json(ROOT/'actions.json',[])
@@ -406,6 +460,7 @@ async def serve_agent():
     for sig in [signal.SIGTERM,signal.SIGINT]:asyncio.get_running_loop().add_signal_handler(sig,done.set)
     try:await done.wait()
     finally:
+        if agent.probe_udp:agent.probe_udp.close()
         await public.cleanup();await private.cleanup()
         await asyncio.gather(*list(agent.tasks),return_exceptions=True)
         SOCKET.unlink(missing_ok=True);lock.close()

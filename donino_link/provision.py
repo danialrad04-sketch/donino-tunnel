@@ -234,6 +234,8 @@ class Worker:
         for name in ['plans', 'jobs', 'hosts']:
             (self.root/name).mkdir(exist_ok=True, mode=0o700)
         self.allow_private = allow_private
+        from .discovery import Inventory
+        self.inventory=Inventory(self.root,self.live);self.remote_inventory=None
         self.lock = threading.RLock()
         self.busy = False
         self.task = None
@@ -273,7 +275,7 @@ class Worker:
                 'transports': [{'id': t, 'experimental': t in EXPERIMENTAL} for t in TRANSPORTS],
                 'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy,
                 'iran_address':read_json(self.live,{}).get('public_address'),
-                'paqet_capabilities':capabilities(),'paqet':status(self.live.parent), 'active_spec':self.active_spec()}
+                'inventory':self.inventory.scan(),'remote_inventory':self.remote_inventory,'paqet_capabilities':capabilities(),'paqet':status(self.live.parent), 'active_spec':self.active_spec()}
 
     def active_spec(self):
         from .paqet import safe_options
@@ -308,6 +310,39 @@ class Worker:
             result=await asyncio.to_thread(subprocess.run,['systemctl',action,UNIT],capture_output=True,timeout=45)
             if result.returncode:raise ValueError('Paqet service operation failed; inspect its journal')
             return {'action':action,'ok':True}
+        finally:
+            with self.lock:self.busy=False
+
+    async def imported_action(self,body):
+        strict_fields(body,['id','action','enabled','cursor','revision','config','ack_peer_change','profile_id'],['id','action'])
+        op=body['action']
+        if op=='logs':return await asyncio.to_thread(self.inventory.logs,body['id'],body.get('cursor'))
+        if op=='inspect':return await asyncio.to_thread(self.inventory.scan,True)
+        if op not in ('manage','start','stop','restart','edit','test'):raise ValueError('invalid detected service action')
+        with self.lock:
+            if self.busy:raise ValueError('installation or service operation already running')
+            self.busy=True
+        try:
+            if op=='manage':return await asyncio.to_thread(self.inventory.enable,body['id'],body.get('enabled'))
+            if op=='edit':return await asyncio.to_thread(self.inventory.edit,body['id'],body.get('revision'),body.get('config'),body.get('ack_peer_change',False))
+            if op=='test':
+                from .peer import peer_request
+                from .import_health import test,key_id
+                row=await asyncio.to_thread(self.inventory.select,body['id'])
+                profile=self.profile(body.get('profile_id'));remote=await peer_request(profile,'/inventory',{})
+                self.remote_inventory={'time':time.time(),**remote}
+                fingerprint=key_id(row.get('config',{}))
+                if row.get('role')!='client' or not fingerprint:raise ValueError('a client Paqet configuration with a matching key is required')
+                port=endpoint(row['config']['server']['addr'])[1]
+                match=next((r for r in remote['services'] if r.get('engine')=='paqet' and r.get('role')=='server' and r.get('key_id')==fingerprint and str(r.get('config',{}).get('listen',{}).get('addr','')).endswith(':'+str(port))),None)
+                if not match:raise ValueError('no paired foreign Paqet server with the same key was detected')
+                material=await peer_request(profile,'/external-health',{'id':match['id']})
+                result=await asyncio.to_thread(test,row['config'],material)
+                observation={**result,'revision':row.get('revision'),'time':time.time(),'key_id':key_id(row['config']),'server_id':match['id']}
+                self.inventory.health[row['id']]=observation
+                await peer_request(profile,'/external-observation',observation)
+                return observation
+            return await asyncio.to_thread(self.inventory.control,body['id'],op)
         finally:
             with self.lock:self.busy=False
 
@@ -346,9 +381,14 @@ class Worker:
         from aiohttp import ClientError
         from .cli import doctor
         cfg=load_config(self.live)
-        if not cfg.get('paths'):return
         profiles=[p for p in read_json(self.root/'profiles.json',[]) if p.get('agent_token')]
         if not profiles:return
+        for profile in reversed(profiles):
+            try:
+                from .peer import peer_request
+                self.remote_inventory={'time':time.time(),**await peer_request(profile,'/inventory',{})};break
+            except (OSError,ValueError,ClientError,asyncio.TimeoutError):continue
+        if not cfg.get('paths'):return
         rows=await doctor(cfg)
         for profile in reversed(profiles):
             try:
@@ -546,13 +586,14 @@ def application(worker):
         except OSError:
             return web.json_response({'error': 'Controller resource or network unavailable'}, status=503)
     app = web.Application(client_max_size=65536, middlewares=[errors])
-    async def state(request): return web.json_response(worker.state())
+    async def state(request): return web.json_response(await asyncio.to_thread(worker.state))
     async def profiles(request): return web.json_response(await asyncio.to_thread(worker.add_profile, await request.json()), status=201)
     async def pair(request): return web.json_response(await asyncio.to_thread(worker.pair,await request.json()),status=201)
     async def preview(request): return web.json_response(await asyncio.to_thread(worker.preview, await request.json()), status=201)
     async def start(request): return web.json_response(await worker.start(await request.json()), status=202)
     async def paqet_action(request):return web.json_response(await worker.paqet_action(await request.json()))
-    app.add_routes([web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
+    async def imported_action(request):return web.json_response(await worker.imported_action(await request.json()))
+    app.add_routes([web.post('/imported-action',imported_action),web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
     async def cleanup(app):
         if worker.task: await worker.task
     app.on_cleanup.append(cleanup)
@@ -569,6 +610,7 @@ async def serve_control():
     settings = read_json('/etc/donino-control.json', {})
     worker = Worker(allow_private=settings.get('allow_private_peers') is True)
     # Recovery runs before accepting new mutations.
+    await asyncio.to_thread(worker.inventory.recover)
     await worker.recover()
     runner = web.AppRunner(application(worker), access_log=None); await runner.setup()
     SOCKET.parent.mkdir(mode=0o750, exist_ok=True)

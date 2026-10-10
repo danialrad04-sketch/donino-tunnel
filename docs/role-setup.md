@@ -108,3 +108,6 @@ sudo journalctl -u donino-foreign-agent -n 100 --no-pager
 کلیدها و tokenها root-only در `/var/lib/donino-control` و `/var/lib/donino-foreign` می‌مانند. فایل کلید SSH پروژه `/var/lib/donino-foreign/authorized_keys` است؛ کلیدهای اپراتور در `/root/.ssh/authorized_keys` دست‌نخورده می‌مانند. drop-in اختصاصی SSH فقط root از IP جفت‌شده را با کلید مجاز می‌کند؛ tokenهای agent نیز به IP واقعی همان اتصال محدودند. تغییر IP خروجی ایران نیازمند جفت‌سازی تازه است. دسترسی SSH این جفت برای نصب، **مجوز مدیریت root خارج** است، هرچند forwarding، PTY و agent forwarding روی کلید مسدودند.
 
 HTTP پنل‌ها طبق انتخاب مدیر پشتیبانی می‌شود؛ اطلاعات ورود، نشست و کد داخل HTTP رمزنگاری نمی‌شوند. TLS پین‌شدهٔ agent این محدودیت پنل HTTP را تغییر نمی‌دهد. احراز هویت، CSRF، Origin check و rate limit فعال‌اند. برای نشانی خارج از `9444` در provider، تنظیم پورت واقعی و دسترسی مستقیم لازم است؛ reverse proxy عمومی پنل به‌صورت خودکار agent را proxy نمی‌کند.
+
+
+برای مدیریت Paqet که با اسکریپت دیگری نصب کرده‌ای، [راهنمای تشخیص و پذیرش نصب فعلی](existing-paqet.md) را ببین. ارتقا با `sudo bash install-donino.sh --upgrade` نقش و نشانی فعلی را خودکار می‌خواند.

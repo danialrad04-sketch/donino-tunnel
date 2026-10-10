@@ -94,6 +94,8 @@ def install(role,address,password=None,panel_port=None,agent_port=9444,open_ufw=
     if existing and existing['role']!=role:raise ValueError('this node already has the other role; do not replace it')
     if existing and not upgrade:raise ValueError('Donino is already installed; use --upgrade to preserve its configuration')
     if existing:
+        for directory in ('/var/lib/donino-control','/var/lib/donino-foreign'):
+            if (Path(directory)/'import-edit.json').exists():raise ValueError('finish or recover the detected-service configuration edit before upgrading')
         for p in Path('/var/lib/donino-control/jobs').glob('*/job.json'):
             if read_json(p).get('status')=='running':raise ValueError('finish the current installation job before upgrading')
         if read_json('/var/lib/donino-foreign/lease.json',{}).get('expires',0)>__import__('time').time():raise ValueError('foreign node has an active installation lease')

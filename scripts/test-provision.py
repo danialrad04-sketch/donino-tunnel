@@ -103,6 +103,9 @@ def main():
             else:raise AssertionError('pairing code replay succeeded')
             report['standalone_panels_and_automatic_ssh_pairing']=True
             report['unrelated_operator_ssh_key_preserved']=True
+            import runpy
+            verify=runpy.run_path(str(BASE/'scripts/test-existing-paqet.py'))['verify']
+            report['external_paqet_adoption']=verify(api,foreign_api,execute,ips,p,login,foreign_login,base,foreign_base)
             spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet','donino-mux','donino-continuum'],'experimental':True,'open_ufw':True}
             spec['paqet_options']={'conn':2,'kcp':{'mode':'normal','dshard':10,'pshard':3,'sndwnd':128,'rcvwnd':128},
                                    'pcap_sockbuf':4194304,'local_flag':['PA'],'remote_flag':['PA'],

@@ -37,6 +37,28 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
             result=self.agent.exchange({'token':token,'public_key':self.key,'name':'Iran'},'127.0.0.1')
         return result
 
+    async def test_imported_health_routes_require_pairing_and_do_not_expose_private_material_in_state(self):
+        for path in ('/inventory','/external-health','/external-observation'):
+            self.assertEqual((await self.client.post(path,json={})).status,401)
+        self.assertEqual((await self.client.post('/imported-action',json={})).status,404)
+        result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
+        from donino_link.import_health import key_id
+        cfg={'role':'server','transport':{'kcp':{'key':'fixture-import-key'}}}
+        row={'id':'c'*24,'role':'server','engine':'paqet','config':cfg}
+        body={'server_id':row['id'],'key_id':key_id(cfg),'tcp_ok':True,'udp_ok':True,'time':0}
+        with patch.object(self.agent.inventory,'select',return_value=row):
+            material=await self.agent.external_health({'id':row['id']})
+            self.assertEqual(material['key'],'1'*64);self.assertTrue(material['udp'].startswith('127.0.0.1:'))
+            self.agent.external_observation(pair,body)
+            observed=self.agent.inventory.health[row['id']];self.assertGreater(observed['time'],time.time()-2)
+            with self.assertRaises(ValueError):self.agent.external_observation(pair,{**body,'udp_ok':'yes'})
+            with self.assertRaises(ValueError):self.agent.external_observation(pair,{**body,'key_id':'wrong'})
+            self.agent.revoke(pair['id'])
+            with self.assertRaises(web.HTTPUnauthorized):self.agent.external_observation(pair,body)
+        self.assertNotIn(material['key'],json.dumps(self.agent.state()))
+        self.assertNotIn(row['id'],self.agent.inventory.health)
+        self.agent.probe_udp.close()
+
     async def test_expiring_single_use_pairing_and_no_secret_in_state(self):
         code=self.agent.pairing_code()['code'];result=self.exchange(code)
         with self.assertRaisesRegex(ValueError,'expired, used'):self.exchange(code)

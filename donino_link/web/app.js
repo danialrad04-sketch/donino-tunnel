@@ -53,7 +53,7 @@ function render(d){
   $("path-summary").textContent=fa(d.paths.length)+" مسیر · "+fa(healthy.length)+" سالم و فعال";
   $("pause").textContent=d.paused?"ادامهٔ اتصال‌های جدید":"توقف اتصال‌های جدید";
   $("live").textContent="به‌روز · "+new Date(d.time*1000).toLocaleTimeString("fa-IR");$("live").className="badge good";
-  notice(d.paused?"ورودی اتصال‌های جدید متوقف است؛ ارتباط‌های جاری ادامه دارند.":!d.selected?"هیچ مسیر سالمی موجود نیست. وضعیت سرویس تانل و دسترسی دو سرور را بررسی کن.":"");
+  notice(d.paused?"ورودی اتصال‌های جدید متوقف است؛ ارتباط‌های جاری ادامه دارند.":d.bootstrap?"هنوز تانلی از فرم نصب Donino فعال نشده است؛ نصب‌های فعلی در بخش تشخیص سرویس‌ها نمایش داده می‌شوند.":!d.selected?"هیچ مسیر سالمی موجود نیست. وضعیت سرویس تانل و دسترسی دو سرور را بررسی کن.":"");
   const cards=d.paths.map(p=>{
     const card=$("path-template").content.firstElementChild.cloneNode(true);
     if(p.id===d.selected) card.classList.add("selected");
@@ -198,7 +198,7 @@ $("setup-form").addEventListener("input",invalidatePlan);
 $("setup-confirm").onchange=()=>$("setup-start").disabled=!setupPlan||!$("setup-confirm").checked||setupRequest||setupState?.busy;
 $("setup-copy-key").onclick=async()=>{try{if(navigator.clipboard)await navigator.clipboard.writeText($("setup-public-key").value);else{$("setup-public-key").select();if(!document.execCommand("copy"))throw Error();}toast("کلید عمومی کپی شد.");}catch{toast("کلید عمومی را از کادر انتخاب و کپی کن.");}};
 function renderSetup(data){
-  setupState=data;const available=data.available;
+  setupState=data;renderDetected(data.inventory,false,data.remote_inventory);const available=data.available;
   if(data.paqet_capabilities)initPaqetFields(data.paqet_capabilities);renderPaqet(data.paqet,false);
   $("setup-status").textContent=available?(data.busy?"نصب در حال اجرا":"آمادهٔ راه‌اندازی"):"نیاز به فعال‌سازی";$("setup-status").className="badge "+(available?"good":"bad");
   $("setup-unavailable").hidden=!!available;$("setup-unavailable").textContent=data.reason||"سرویس نصب خودکار در دسترس نیست.";
@@ -240,6 +240,7 @@ function configureRole(foreign){
   if(foreign){document.querySelector("#guide h3").textContent="سه بررسی، سه نتیجهٔ مستقل";const ps=document.querySelectorAll("#guide p");ps[0].textContent="روشن بودن systemd فقط وضعیت سرویس محلی است. دسترسی TCP مقصد جدا سنجیده می‌شود. سلامت تانل به آزمون تازه و امضاشده از ایران نیاز دارد؛ شاهد قدیمی یا غایب نامشخص نمایش داده می‌شود.";ps[1].textContent="ترافیک و اتصال‌های فعال از relayهای همین سرور خوانده می‌شوند؛ شمارنده‌ها از شروع فرآیندهای فعلی‌اند. انتخاب مسیر و نصب کامل دو سرور در پنل ایران انجام می‌شود.";}
 }
 function renderForeign(d){
+  renderDetected(d.foreign?.inventory,true);
   renderPaqet(d.foreign?.paqet,true,d.foreign);
   const f=d.foreign||{},busy=foreignPending||f.action_busy||!!f.lease;
   $("selected").textContent=d.telemetry_fresh?"ارتباط از ایران تأیید شد":d.bootstrap?"آمادهٔ جفت‌سازی":"در انتظار آزمون ایران";
@@ -268,3 +269,33 @@ $("foreign-test").onclick=async()=>{try{await foreignCall("/api/foreign/action",
 
 function syncPaqetInputs(){const enabled=[...$("setup-transports").querySelectorAll("input:checked")].some(n=>n.value==="paqet");$("paqet-options").hidden=!enabled;$("paqet-options").querySelectorAll("input,select,button").forEach(n=>n.disabled=!enabled);$("paqet-native-only").disabled=!enabled;const native=enabled&&$("paqet-native-only").checked;$("setup-services").querySelectorAll("input,button").forEach(n=>n.disabled=native);$("setup-add-service").disabled=native;}
 $("setup-transports").addEventListener("change",syncPaqetInputs);$("paqet-native-only").onchange=syncPaqetInputs;
+
+let detectedState=null,detectedForeign=false,detectedRemote=null,detectedSelected=null,detectedBusy=false,detectedCursor=null,detectedLines=[],detectedLogBusy=false,lastDetectedTest=0;
+function selectedDetected(){return detectedState?.services?.find(r=>r.id===detectedSelected);}
+function renderDetected(inventory,foreign,remote){
+  if(!inventory)return;detectedState=inventory;detectedForeign=foreign;detectedRemote=remote||null;$("detected-panel").hidden=false;
+  $("detected-count").textContent=fa(inventory.services.length)+" سرویس شناسایی‌شده";$("detected-error").textContent=inventory.error||(!inventory.services.length?"فعلاً سرویس شناخته‌شده‌ای دیده نشده است.":"");
+  $("detected-list").replaceChildren(...inventory.services.map(row=>{const card=el("article",undefined,"detected-service"+(row.id===detectedSelected?" selected":""));card.append(el("strong",row.engine),el("code",row.unit),el("span",row.active?"در حال اجرا":"خاموش / "+row.state,"badge "+(row.active?"good":"")),el("p",(row.role==="client"?"ایران / client":row.role==="server"?"خارج / server":"سرویس موجود")+" · "+(row.management_enabled?"مدیریت فعال":"فقط مشاهده"),"field-help"));if(row.config_error)card.append(el("p",row.config_error,"field-help"));if(row.engine==="paqet"){const b=el("button","مشاهده و مدیریت");b.type="button";b.onclick=()=>selectDetected(row.id);card.append(b);}return card;}));
+  const row=selectedDetected();$("detected-detail").hidden=!row;if(!row)return;
+  $("detected-title").textContent=row.unit+" · "+(row.active?"روشن":"خاموش");$("detected-file").textContent=row.config_path||"مسیر تنظیمات تشخیص داده نشد";
+  $("detected-manage").textContent=row.management_enabled?"لغو مدیریت؛ سرویس حفظ می‌شود":"فعال‌کردن مدیریت همین سرویس";$("detected-manage").disabled=detectedBusy||(!row.editable&&!row.management_enabled);
+  ["start","stop","restart"].forEach(op=>$("detected-"+op).disabled=detectedBusy||!row.management_enabled);
+  $("detected-save").disabled=detectedBusy||!row.management_enabled||!!row.managed_by_donino||!$("detected-confirm").checked;$("detected-config").readOnly=!row.management_enabled||!!row.managed_by_donino;
+  const h=row.health;$("detected-health").textContent=h?("TCP: "+(h.tcp_ok===true?"رفت‌وبرگشت امضاشده سالم":h.tcp_ok===false?"ناموفق":"تأیید نشده")+" · UDP: "+(h.udp_ok===true?"رفت‌وبرگشت امضاشده سالم":h.udp_ok===false?"ناموفق":"تأیید نشده")+" · "+new Date(h.time*1000).toLocaleTimeString("fa-IR")):"روشن بودن فرآیند، سلامت ارتباط دو سرور را ثابت نمی‌کند؛ در انتظار آزمون تازه.";
+  const fresh=remote&&Date.now()/1000-remote.time<45;const paired=fresh?remote.services?.find(r=>r.role!==row.role&&r.key_id&&r.key_id===row.key_id):null;
+  $("detected-pair").textContent=foreign?"نتیجهٔ آزمون پنل ایران اینجا هم ثبت می‌شود؛ از پنل ایران آزمون را شروع کن.":paired?"Paqet طرف مقابل شناسایی شد: "+paired.unit:!fresh?"برای تطبیق دو نقش و آزمون امضاشده، پنل خارج را جفت کن.":"نصب متناظر با همین کلید هنوز در خارج شناسایی نشده است.";
+  $("detected-test").disabled=detectedBusy||(!foreign&&!setupState?.profiles?.length);
+  $("detected-auto-test").disabled=foreign;
+}
+function selectDetected(id){detectedSelected=id;detectedCursor=null;detectedLines=[];$("detected-logs").textContent="در انتظار journal…";$("detected-result").textContent="";$("detected-confirm").checked=false;$("detected-auto-test").checked=false;loadDetectedConfig();renderDetected(detectedState,detectedForeign,detectedRemote);$("detected-detail").scrollIntoView({block:"nearest",behavior:"smooth"});pollDetectedLogs();}
+function loadDetectedConfig(){const row=selectedDetected();if(!row)return;$("detected-config").value=JSON.stringify(row.config||{},null,2);$("detected-config").dataset.revision=row.revision||"";}
+async function detectedAction(action,extra={}){
+ const row=selectedDetected();if(!row||detectedBusy)return;detectedBusy=true;$("detected-result").textContent="در حال اجرا…";
+ try{const body={id:row.id,action,...extra};if(action==="test"&&!detectedForeign)body.profile_id=$("setup-profile").value||setupState?.profiles?.[0]?.id;const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",body);$("detected-result").textContent=result.reason||result.error||(action==="test"?"TCP: "+String(result.tcp_ok)+" · UDP: "+String(result.udp_ok):action==="manage"?"اجازهٔ مدیریت تغییر کرد؛ خودِ سرویس تغییر نکرد.":action==="edit"?"انجام شد؛ فایل پشتیبان ذخیره شد. آزمون دوطرفه را دوباره اجرا کن.":"انجام شد؛ وضعیت و لاگ را بررسی کن.");if(action==="edit")$("detected-confirm").checked=false;await refresh();if(!detectedForeign)await pollSetup();}
+ catch(e){$("detected-result").textContent=e.message;}finally{detectedBusy=false;if(detectedState)renderDetected(detectedState,detectedForeign,detectedRemote);}
+}
+$("detected-manage").onclick=()=>detectedAction("manage",{enabled:!selectedDetected()?.management_enabled});["start","stop","restart","test"].forEach(op=>$("detected-"+op).onclick=()=>detectedAction(op));
+$("detected-confirm").onchange=()=>renderDetected(detectedState,detectedForeign,detectedRemote);$("detected-reload").onclick=async()=>{const row=selectedDetected();if(!row)return;try{const inventory=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",{id:row.id,action:"inspect"});renderDetected(inventory,detectedForeign,detectedRemote);loadDetectedConfig();}catch(e){$("detected-result").textContent=e.message;}};
+$("detected-save").onclick=()=>{try{const cfg=JSON.parse($("detected-config").value);detectedAction("edit",{revision:$("detected-config").dataset.revision,config:cfg,ack_peer_change:$("detected-confirm").checked});}catch{$("detected-result").textContent="تنظیمات باید JSON معتبر باشد.";}};
+async function pollDetectedLogs(){const row=selectedDetected();if(!csrf||!row||!$("detected-live").checked||detectedLogBusy||document.hidden)return;detectedLogBusy=true;const id=row.id;try{const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",{id,action:"logs",cursor:detectedCursor});if(id!==detectedSelected)return;detectedCursor=result.cursor;detectedLines.push(...result.lines.map(l=>(l.time?new Date(Number(l.time)/1000).toLocaleTimeString("fa-IR")+" · ":"")+l.message));detectedLines=detectedLines.slice(-300);$("detected-logs").textContent=detectedLines.join("\n")||"رویداد تازه‌ای در journal نیست؛ سطح لاگ فعلی موتور ممکن است none باشد.";if(result.reason)$("detected-logs").textContent=result.reason;if(result.truncated)$("detected-result").textContent="خروجی journal محدود شد؛ آخرین پیام‌های دریافت‌شده نمایش داده می‌شوند.";}catch(e){$("detected-logs").textContent=e.message;}finally{detectedLogBusy=false;}}
+setInterval(()=>{pollDetectedLogs();if(csrf&&!document.hidden&&$("detected-auto-test").checked&&!detectedForeign&&selectedDetected()&&Date.now()-lastDetectedTest>15000){lastDetectedTest=Date.now();detectedAction("test");}},2000);

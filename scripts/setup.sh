@@ -4,17 +4,29 @@ set -Eeuo pipefail
 umask 077
 [[ $(id -u) -eq 0 ]] || { echo 'Run: sudo bash scripts/setup.sh' >&2; exit 1; }
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-role='';address='';forward=()
+role='';address='';forward=();upgrade=false
 while (($#)); do
   case "$1" in
     --role) role=${2:?}; shift 2;;
     --address) address=${2:?}; shift 2;;
     --panel-port|--agent-port|--password-file) forward+=("$1" "${2:?}"); shift 2;;
-    --upgrade|--no-open-ufw|--allow-private-peers) forward+=("$1"); shift;;
+    --upgrade) upgrade=true; forward+=("$1"); shift;;
+    --no-open-ufw|--allow-private-peers) forward+=("$1"); shift;;
     --help) echo 'sudo bash scripts/setup.sh [--role iran|foreign] [--address IP_OR_DNS] [--panel-port PORT] [--agent-port PORT] [--upgrade]'; exit 0;;
     *) echo "Unknown option: $1" >&2; exit 1;;
   esac
 done
+if $upgrade && [[ -f /etc/donino-link/current/node.json ]]; then
+  mapfile -t existing_node < <(python3 - <<'PYCONFIG'
+import json
+from pathlib import Path
+cfg=json.loads(Path('/etc/donino-link/current/node.json').read_text())
+print(cfg['role']);print(cfg.get('public_address',''))
+PYCONFIG
+)
+  [[ -n "$role" ]] || role=${existing_node[0]:-}
+  [[ -n "$address" ]] || address=${existing_node[1]:-}
+fi
 if [[ -z "$role" ]]; then
   echo 'Donino Tunnel — install this server'
   echo '1) Iran: control panel and automatic two-node installer'
