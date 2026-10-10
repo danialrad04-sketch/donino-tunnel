@@ -1,3 +1,4 @@
+from .runtime import continuum_status
 import asyncio
 import contextlib
 import time
@@ -223,7 +224,9 @@ class Gateway:
         candidates=self.candidates(service)
         paths=[]
         for p in self.paths.values():
-            row=p.snapshot();row['quality']=self.router.details(p);paths.append(row)
+            row=p.snapshot();row['quality']=self.router.details(p)
+            if p.config['id']=='donino-continuum':row['continuum']=continuum_status('iran')
+            paths.append(row)
         return {"version":"0.1.0", "role":"iran","bootstrap":self.config.get('bootstrap',False),"public_address":self.config.get('public_address'), "time":time.time(), "uptime":time.time()-self.started,
                 "paused":self.paused, "preferred":self.preferred, "active":self.active,
                 "accepted":self.accepted, "rejected":self.rejected,"route_changes":self.failovers,

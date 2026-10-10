@@ -13,8 +13,8 @@ from .panel import password_record
 
 ETC = "/etc/donino-link/current"
 OPT = "/opt/donino-link/current"
-TRANSPORTS = ("frp-wss", "frp-quic", "backpack-wss", "paqet", "backhaul-wss", "browser-wss", "donino-mux")
-EXPERIMENTAL = {"backpack-wss", "paqet", "backhaul-wss", "browser-wss", "donino-mux"}
+TRANSPORTS = ("frp-wss", "frp-quic", "backpack-wss", "paqet", "backhaul-wss", "browser-wss", "donino-mux", "donino-continuum")
+EXPERIMENTAL = {"backpack-wss", "paqet", "backhaul-wss", "browser-wss", "donino-mux", "donino-continuum"}
 
 
 def q(v):
@@ -102,16 +102,16 @@ def make_certs(directory, iran, renew=False, foreign=None, mux=False):
 def renew_plan(output):
     output=Path(output)
     summary=json.loads((output/'plan.json').read_text())
-    make_certs(output/'ca',summary['iran'],renew=True,foreign=summary['foreign'] if set(summary['transports'])&{'browser-wss','donino-mux'} else None,mux='donino-mux' in summary['transports'])
+    make_certs(output/'ca',summary['iran'],renew=True,foreign=summary['foreign'] if set(summary['transports'])&{'browser-wss','donino-mux','donino-continuum'} else None,mux=bool(set(summary['transports'])&{'donino-mux','donino-continuum'}))
     for role,who in [('iran','server'),('foreign','client')]:
         for suffix in ['crt','key']:
             shutil.copy2(output/'ca'/f'{who}.{suffix}',output/role/'certs'/f'{who}.{suffix}')
 
 
-    if set(summary['transports'])&{'browser-wss','donino-mux'}:
+    if set(summary['transports'])&{'browser-wss','donino-mux','donino-continuum'}:
         for suffix in ['crt','key']:
             shutil.copy2(output/'ca'/f'browser.{suffix}',output/'foreign'/'certs'/f'browser.{suffix}')
-    if 'donino-mux' in summary['transports']:
+    if set(summary['transports'])&{'donino-mux','donino-continuum'}:
         for suffix in ['crt','key']:
             shutil.copy2(output/'ca'/f'mux-client.{suffix}',output/'iran'/'certs'/f'mux-client.{suffix}')
     if 'browser-wss' in summary['transports']:
@@ -221,7 +221,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
             return browser_port
         return carrier_base+index
     relay_base=base+1000
-    relay_transports=[t for t in transports if t not in ('browser-wss','donino-mux')]
+    relay_transports=[t for t in transports if t not in ('browser-wss','donino-mux','donino-continuum')]
     iran_ports=[endpoint(s['listen'])[1] for s in services]+[panel_port]
     # Target port aliases are valid, but the health responder or a public
     # wildcard listener must never conflict with an existing origin listener.
@@ -232,10 +232,10 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     if relay_transports:
         foreign_ports.extend(relay_base+j for j in range(len(services)))
     for i,t in enumerate(transports):
-        if t not in ('browser-wss','donino-mux'):
+        if t not in ('browser-wss','donino-mux','donino-continuum'):
             iran_ports.extend(base+i*100+60+j for j in range(len(services)))
         iran_ports.extend([base+i*100+j for j in range(len(services))]+[base+i*100+50])
-        if t in ('browser-wss','paqet','donino-mux'):
+        if t in ('browser-wss','paqet','donino-mux','donino-continuum'):
             foreign_ports.append(carrier_port(i,t))
         else:
             iran_ports.append(carrier_port(i,t))
@@ -250,7 +250,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     output.mkdir(mode=0o700,parents=True)
     health_key = secrets.token_hex(32)
     (output/"ca").mkdir(mode=0o700)
-    make_certs(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux"} else None,mux='donino-mux' in transports)
+    make_certs(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux","donino-continuum"} else None,mux=bool(set(transports)&{'donino-mux','donino-continuum'}))
     paths,engines,units = [],set(),{"iran":[],"foreign":[]}
     for role in ['iran','foreign']:
         root = output/role
@@ -269,28 +269,30 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
         if engine not in ('browser','donino'):
             engines.add(engine)
         local_base=base+i*100
-        mappings=[(s['id'],local_base+j,s['target'] if t in ('browser-wss','donino-mux') else f'127.0.0.1:{relay_base+j}') for j,s in enumerate(services)]+[('health',local_base+50,f'127.0.0.1:{health_port}')]
+        mappings=[(s['id'],local_base+j,s['target'] if t in ('browser-wss','donino-mux','donino-continuum') else f'127.0.0.1:{relay_base+j}') for j,s in enumerate(services)]+[('health',local_base+50,f'127.0.0.1:{health_port}')]
         paths.append({'id':t,'transport':t,'priority':10+i*10,'health':f'127.0.0.1:{local_base+50}',
-                      'backends':{s['id']:f'127.0.0.1:{local_base+j+(0 if t in ("browser-wss","donino-mux") else 60)}' for j,s in enumerate(services)}})
-        if t not in ('browser-wss','donino-mux'):
+                      'backends':{s['id']:f'127.0.0.1:{local_base+j+(0 if t in ("browser-wss","donino-mux","donino-continuum") else 60)}' for j,s in enumerate(services)}})
+        if t not in ('browser-wss','donino-mux','donino-continuum'):
             relay_listeners.extend({'listen':f'127.0.0.1:{local_base+60+j}','target':f'127.0.0.1:{local_base+j}'} for j in range(len(services)))
         token=secrets.token_hex(32)
         port=carrier_port(i,t)
         for role in ['iran','foreign']:
             root=output/role
-            ext='json' if t in ('browser-wss','donino-mux') else ('yaml' if t=='paqet' else 'toml')
+            ext='json' if t in ('browser-wss','donino-mux','donino-continuum') else ('yaml' if t=='paqet' else 'toml')
             file=f'transports/{t}.{ext}'
-            if t=='donino-mux':
+            if t in ('donino-mux','donino-continuum'):
                 host=f'[{foreign}]' if ':' in foreign else foreign
-                common={'role':role,'ca':f'{ETC}/certs/ca.crt','stats_file':f'/var/lib/donino-link/mux-{role}.json'}
+                module='continuum' if t=='donino-continuum' else 'mux'
+                route='continuum' if t=='donino-continuum' else 'link'
+                common={'role':role,'ca':f'{ETC}/certs/ca.crt','stats_file':f'/var/lib/donino-link/{module}-{role}.json'}
                 if role=='iran':
                     for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'mux-client.{suffix}',root/'certs'/f'mux-client.{suffix}')
-                    common.update(url=f'wss://{host}:{port}/link',cert=f'{ETC}/certs/mux-client.crt',key=f'{ETC}/certs/mux-client.key',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
+                    common.update(url=f'wss://{host}:{port}/{route}',cert=f'{ETC}/certs/mux-client.crt',key=f'{ETC}/certs/mux-client.key',listeners={name:f'127.0.0.1:{local}' for name,local,_ in mappings})
                 else:
                     for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'browser.{suffix}',root/'certs'/f'browser.{suffix}')
                     common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings})
                 text=json.dumps(common,indent=2)+'\n'
-                command=f'{OPT}/venv/bin/python -m donino_link.mux --config {ETC}/{file}'
+                command=f'{OPT}/venv/bin/python -m donino_link.{module} --config {ETC}/{file}'
             elif t=='browser-wss':
                 host=f'[{foreign}]' if ':' in foreign else foreign
                 origin=f'https://{host}'+('' if port==443 else f':{port}')
@@ -364,12 +366,12 @@ WantedBy=multi-user.target
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
-                    'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux')],'udp':[]},
+                    'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]},
                     'listeners': ([{'protocol':'tcp','port':p} for p in iran_ports] + [{'protocol':'udp','port':carrier_port(i,t)} for i,t in enumerate(transports) if t=='frp-quic']) if role=='iran' else [{'protocol':'tcp','port':p} for p in foreign_ports if p not in target_ports],
                     'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None})
     summary={'schema':1,'iran':iran,'foreign':foreign,'transports':transports,'services':services,'units':units,'experimental':experimental,
-             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux')]+[endpoint(s['listen'])[1] for s in services],
+             'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services],
                                   'udp':[carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']},
-                                  'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux')],'udp':[]}}}
+                                  'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]}}}
     atomic_json(output/'plan.json',summary)
     return summary

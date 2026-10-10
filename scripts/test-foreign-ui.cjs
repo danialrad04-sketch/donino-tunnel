@@ -14,15 +14,16 @@ async function main(){
     await outside.locator('#login-form button').click();
     await outside.locator('#foreign-node').waitFor({state:'visible'});
     if(await outside.locator('#setup').isVisible())throw Error('foreign must have its own role panel');
-    await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===7&&document.querySelectorAll('.foreign-unit').length>=7);
+    await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===8&&document.querySelectorAll('.foreign-unit').length>=8);
     if(process.env.DONINO_EXPECT_UNKNOWN==='1'){
-      await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===7&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='نامشخص'));
+      await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===8&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='نامشخص'));
       await outside.screenshot({path:'ui-role-results/foreign-unknown.png',fullPage:true});
       if(errors.length)throw Error(JSON.stringify(errors));
       console.log(JSON.stringify({revoked_peer_no_fresh_health:true,unknown_paths_render:true,js_errors:errors}));
       if(process.env.DONINO_EMIT_SCREENSHOT==='1')console.log('DONINO_ROLE_SCREENSHOT_foreign-unknown:'+fs.readFileSync('ui-role-results/foreign-unknown.png').toString('base64'));
       return;
     }
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='donino-continuum')?.textContent.includes('بازیابی موفق'));
     await outside.locator('#foreign-test').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-action-history').textContent.includes('موفق'),{},{timeout:45000});
     const quic=outside.locator('.foreign-unit').filter({hasText:'donino-link-frp-quic.service'});
@@ -30,7 +31,7 @@ async function main(){
     await outside.waitForFunction(()=>[...document.querySelectorAll('.foreign-unit')].find(e=>e.textContent.includes('donino-link-frp-quic.service'))?.querySelector('.badge').textContent==='inactive',{},{timeout:45000});
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='frp-quic')?.querySelector('.path-status').textContent!=='سالم');
     await quic.getByRole('button',{name:'شروع',exact:true}).click();
-    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===7&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
+    await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===8&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
     const panelUnit=outside.locator('.foreign-unit').filter({hasText:/donino-link\.service/});
     if(!await panelUnit.getByRole('button',{name:'توقف',exact:true}).isDisabled())throw Error('panel must not stop itself');
     await outside.locator('#foreign-new-code').click();
@@ -52,6 +53,7 @@ async function main(){
     const iran=await browser.newPage({viewport:{width:1440,height:1000}});iran.on('pageerror',e=>errors.push(e.message));
     await iran.goto(process.env.DONINO_IRAN_URL);
     await iran.locator('#password').fill('systemd-fixture-password-123');await iran.locator('#login-form button').click();
+    await iran.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='donino-continuum')?.textContent.includes('بازیابی موفق'));
     await iran.locator('#setup').waitFor({state:'visible'});await iran.locator('#setup-details summary').first().click();
     await iran.locator('#adaptive').click();
     await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='true');

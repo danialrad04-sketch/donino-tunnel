@@ -118,6 +118,25 @@ class PlanTests(unittest.TestCase):
         self.assertTrue((stage/'node/certs/mux-client.key').exists())
         self.assertFalse(any(p.name in ('ca.key','browser.key','client.key') for p in stage.rglob('*')))
 
+    def test_continuum_plan_preserves_mux_and_installs_both_roles(self):
+        plan=self.root/'continuum-plan'
+        summary=make_plan(plan,'192.0.2.10','outside.example',self.services,['donino-mux','donino-continuum'],'private-test-password',True)
+        iran=json.loads((plan/'iran/transports/donino-continuum.json').read_text())
+        foreign=json.loads((plan/'foreign/transports/donino-continuum.json').read_text())
+        self.assertEqual(iran['url'],'wss://outside.example:24444/continuum')
+        self.assertEqual(foreign['targets']['web'],'127.0.0.1:8443')
+        self.assertEqual(summary['firewall']['foreign']['tcp'],[24443,24444])
+        for role in ['iran','foreign']:
+            install=json.loads((plan/role/'install.json').read_text())
+            self.assertEqual(install['engines'],[])
+            self.assertIn('-m donino_link.continuum',(plan/role/'units/donino-link-donino-continuum.service').read_text())
+            self.assertIn('-m donino_link.mux',(plan/role/'units/donino-link-donino-mux.service').read_text())
+            self.assertFalse((plan/role/'units/donino-link-framed.service').exists())
+        renew_plan(plan)
+        self.assertEqual((plan/'iran/certs/mux-client.crt').read_bytes(),(plan/'ca/mux-client.crt').read_bytes())
+        stage=self.root/'continuum-stage';build_payload(plan/'foreign',stage)
+        self.assertEqual(len(list(stage.rglob('continuum.py'))),1)
+
     def test_packaged_metadata_is_current(self):
         root=Path(__file__).resolve().parent.parent
         self.assertEqual((root/'pyproject.toml').read_bytes(),(root/'donino_link/resources/pyproject.toml').read_bytes())

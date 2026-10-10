@@ -62,6 +62,10 @@ function render(d){
     const b=card.querySelector(".path-status"); b.textContent=foreign&&p.observation==="unknown"?"نامشخص":p.healthy?"سالم":"ناموفق";if(p.healthy)b.classList.add("good");else if(!(foreign&&p.observation==="unknown"))b.classList.add("bad");
     const metrics=card.querySelector(".path-metrics");
     (foreign?[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","آزمون از ایران"],[d.units.find(u=>u.unit==="donino-link-"+p.id+".service")?.active?"روشن":"خاموش","سرویس محلی"],[p.observation==="fresh"?"تازه":"نامشخص","شاهد ارتباط"]]:[[p.latency_ms===null?"—":p.latency_ms.toFixed(1)+" ms","تأخیر"],[fa(p.active),"اتصال فعال"],[bytes(p.bytes_up+p.bytes_down),"ترافیک"]]).forEach(([v,l])=>{const n=el("div");n.append(el("b",v),el("span",l));metrics.append(n);});
+    if(p.id==="donino-continuum"){
+      const t=p.continuum;
+      card.append(el("p",t?"بازیابی موفق: "+fa(t.recoveries)+" · در حال بازیابی: "+fa(t.recovering_sessions)+" · بافر انتظار: "+bytes(t.pending_bytes):"در انتظار گزارش تازهٔ بازیابی نشست","field-help"));
+    }
     card.querySelector(".mode").textContent=modeNames[p.mode];
     if(!foreign&&d.routing_strategy==="adaptive"&&p.quality)card.append(el("p","هزینهٔ مسیر: "+fa(p.quality.cost)+" · کمتر بهتر است","field-help"));
     const menu=card.querySelector("select");menu.hidden=foreign;if(foreign)card.querySelector(".mode").textContent="پایش از پنل ایران";menu.onchange=()=>{if(menu.value)action(p.id,menu.value);};
