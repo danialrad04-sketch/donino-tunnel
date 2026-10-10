@@ -289,6 +289,7 @@ def main():
             assert before==after
             report['results'].append({'unavailable_origin':'fails before activation','previous_releases_preserved':True})
             blocked={**spec,'transports':['frp-wss'],'carrier_base':24543,'open_ufw':False}
+            blocked.pop('paqet_options',None)
             p=api('/api/provision/preview',blocked);failed=api('/api/provision/start',{'plan_id':p['id'],'confirm_replace':True})
             for _ in range(180):
                 try:

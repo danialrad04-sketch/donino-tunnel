@@ -3,7 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from donino_link import paqet, udp_health
 from donino_link.config import atomic_json, load_config
 from donino_link.network import prepare_paqet
@@ -129,6 +129,22 @@ class UDPHealthTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreaterEqual(await udp_health.probe(endpoint,'1'*64),0)
             with self.assertRaises(asyncio.TimeoutError):await udp_health.probe(endpoint,'2'*64,.1)
         finally:transport.close()
+
+    async def test_udp_observation_does_not_survive_failed_tcp_probe(self):
+        from donino_link.gateway import Gateway,PathState
+        from donino_link.store import Store
+        with tempfile.TemporaryDirectory() as directory:
+            store=Store(str(Path(directory)/'state.sqlite'))
+            try:
+                cfg={'paths':[],'services':[],'health_key':'1'*64,'policy':{'probe_timeout':1,'recoveries':1,'failures':1}}
+                gateway=Gateway(cfg,store);path=PathState({'id':'paqet','health':'127.0.0.1:1','udp_health':'127.0.0.1:2'})
+                with patch('donino_link.gateway.probe',new=AsyncMock(return_value=(1,{}))),patch('donino_link.udp_health.probe',new=AsyncMock(return_value=2)):
+                    await gateway.check(path)
+                self.assertTrue(path.remote['udp_ok'])
+                with patch('donino_link.gateway.probe',new=AsyncMock(side_effect=OSError)):
+                    await gateway.check(path)
+                self.assertNotIn('udp_ok',path.remote);self.assertNotIn('udp_latency_ms',path.remote)
+            finally:store.close()
 
     async def test_invalid_packets_do_not_crash_or_receive_replies(self):
         sent=[];responder=udp_health.Responder('key');responder.connection_made(type('Transport',(),{'sendto':lambda self,*a:sent.append(a)})())

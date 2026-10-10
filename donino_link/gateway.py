@@ -98,6 +98,7 @@ class Gateway:
                 path.healthy = True
             path.history.append({"time":time.time(), "latency":round(latency,2), "ok":True})
         except (OSError, ValueError, KeyError, TypeError, asyncio.TimeoutError) as e:
+            path.remote.pop('udp_ok',None);path.remote.pop('udp_latency_ms',None)
             path.quality.probe(None,time.monotonic())
             path.failures += 1
             path.successes = 0

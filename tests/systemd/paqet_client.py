@@ -27,10 +27,14 @@ def udp_test(index):
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as conn:
         conn.settimeout(20);conn.connect(('127.0.0.1',18084))
         # Back-to-back datagrams of distinct lengths must not merge or split.
-        blocks=[struct.pack('!II',index,n)+os.urandom(size) for n,size in enumerate([32,512,1399,4096]*4)]
+        blocks=[struct.pack('!II',index,n)+os.urandom(size) for n,size in enumerate([32,512,1399,4088]*4)]
         for block in blocks:conn.send(block)
         received=[conn.recv(65535) for _ in blocks]
         assert sorted(received)==sorted(blocks),'UDP boundaries or source isolation failed'
+        conn.settimeout(.3);conn.send(os.urandom(4097))
+        try:conn.recv(65535)
+        except socket.timeout:pass
+        else:raise AssertionError('upstream oversized-datagram limit changed')
         return sum(map(len,blocks))
 
 
@@ -64,7 +68,7 @@ def main():
         for block in blocks:udp.send(block)
         assert sorted(udp.recv(65535) for _ in blocks)==sorted(blocks),'SOCKS UDP framing changed'
     print(json.dumps({'native_tcp_bytes_each_direction':tcp_bytes,'native_udp_clients':8,'native_udp_datagrams_per_client':16,
-                      'native_udp_bytes_each_direction':sum(udp_bytes),'udp_boundaries_and_source_isolation':True,
+                      'native_udp_bytes_each_direction':sum(udp_bytes),'udp_boundaries_and_source_isolation':True,'native_udp_max_payload_tested':4096,'oversized_datagram_rejected':True,
                       'socks5_authenticated_tcp_bytes_each_direction':socks_tcp,'socks5_wrong_password_rejected':True,
                       'socks5_udp_associate_datagrams':16,'socks5_udp_boundaries':True}))
 
