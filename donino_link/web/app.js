@@ -10,7 +10,7 @@ async function api(path, body) {
   if(!r.ok){ let detail="";if(path.startsWith("/api/provision/")||path.startsWith("/api/foreign/")){try{detail=(await r.json()).error||"";}catch{}} if(r.status===401 && path!=="/api/login") loggedOut(); throw new Error(detail||(r.status===429?"تلاش‌ها زیاد بوده؛ پنج دقیقه صبر کن.":r.status===401?"رمز نادرست است یا نشست پایان یافته.":"درخواست انجام نشد؛ اتصال و دسترسی را بررسی کن.")); }
   return r.json();
 }
-function loggedOut(){ $("login").hidden=false; $("dashboard").hidden=true; csrf=""; state=null; previousTraffic=null; $("foreign-code-value").value="";$("connection-code").value=""; }
+function loggedOut(){closeNavigation(false);closeInspector(); $("login").hidden=false; $("dashboard").hidden=true; csrf=""; state=null; previousTraffic=null; $("foreign-code-value").value="";$("connection-code").value=""; }
 function loggedIn(){ $("login").hidden=true; $("dashboard").hidden=false; refresh(); setTimeout(pollSetup,0); }
 function notice(text){ $("notice").textContent=text; $("notice").hidden=!text; }
 function toast(text){$("toast").textContent=text;$("toast").hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").hidden=true,4500);}
@@ -31,7 +31,84 @@ let savedTheme="light";try{savedTheme=localStorage.getItem("donino-theme")||"lig
 setTheme(savedTheme==="dark"?"dark":"light");
 $("theme").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
 document.querySelectorAll(".connection-mode").forEach(n=>n.textContent=location.protocol==="https:"?"HTTPS":"HTTP");
-document.querySelectorAll("nav a").forEach(a=>a.onclick=()=>{document.querySelectorAll("nav a").forEach(n=>n.classList.toggle("nav-active",n===a));});
+// One navigation model for touch, keyboard and desktop pointer input.
+const drawerQuery=window.matchMedia("(max-width: 1020px)");
+let navigationOpen=false, navigationFrame=0, inspectorSource=null, navigationWatcher=null;
+function setActiveSection(id){
+  document.querySelectorAll("#sidebar nav a").forEach(link=>{
+    const active=link.hash==="#"+id&&!link.hidden;
+    link.classList.toggle("nav-active",active);
+    if(active)link.setAttribute("aria-current","location");else link.removeAttribute("aria-current");
+  });
+}
+function closeNavigation(restoreFocus=true){
+  navigationWatcher?.destroy();navigationWatcher=null;
+  navigationOpen=false;document.body.classList.remove("drawer-open");
+  $("menu-toggle").setAttribute("aria-expanded","false");$("menu-toggle").setAttribute("aria-label","بازکردن منوی مدیریت");
+  $("nav-backdrop").hidden=true;$("sidebar").inert=drawerQuery.matches;
+  $("sidebar").removeAttribute("role");$("sidebar").removeAttribute("aria-modal");
+  $("main-content").inert=false;document.querySelector(".mobile-topbar").inert=false;
+  if(restoreFocus&&drawerQuery.matches&&!$("dashboard").hidden)$("menu-toggle").focus({preventScroll:true});
+}
+function openNavigation(){
+  if(!drawerQuery.matches)return;
+  navigationOpen=true;document.body.classList.add("drawer-open");$("sidebar").inert=false;
+  $("sidebar").setAttribute("role","dialog");$("sidebar").setAttribute("aria-modal","true");
+  $("menu-toggle").setAttribute("aria-expanded","true");$("menu-toggle").setAttribute("aria-label","بستن منوی مدیریت");
+  $("nav-backdrop").hidden=false;$("main-content").inert=true;document.querySelector(".mobile-topbar").inert=true;
+  $("sidebar").scrollTop=0;
+  if(typeof window.CloseWatcher==="function"){navigationWatcher=new window.CloseWatcher();navigationWatcher.addEventListener("close",()=>closeNavigation());}
+  $("menu-close").focus({preventScroll:true});
+}
+$("menu-toggle").onclick=()=>navigationOpen?closeNavigation():openNavigation();
+$("menu-close").onclick=()=>closeNavigation();$("nav-backdrop").onclick=()=>closeNavigation();
+drawerQuery.addEventListener("change",()=>closeNavigation(false));closeNavigation(false);
+document.addEventListener("keydown",event=>{
+  if(!navigationOpen||$("inspector-dialog").open)return;
+  if(event.key==="Escape"){event.preventDefault();closeNavigation();return;}
+  if(event.key!=="Tab")return;
+  const items=[...$("sidebar").querySelectorAll("a[href],button:not(:disabled)")].filter(n=>!n.hidden&&n.getClientRects().length);
+  const first=items[0],last=items.at(-1);if(!first)return;
+  if(event.shiftKey&&(document.activeElement===first||!$("sidebar").contains(document.activeElement))){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&(document.activeElement===last||!$("sidebar").contains(document.activeElement))){event.preventDefault();first.focus();}
+});
+document.querySelectorAll("#sidebar nav a,.sidebar-head .brand,.mobile-brand").forEach(link=>link.onclick=event=>{
+  const target=document.querySelector(link.hash);if(!target||target.hidden)return;
+  event.preventDefault();closeNavigation(false);
+  if(link.hash==="#setup")$("setup-details").open=true;
+  setActiveSection(target.id);history.replaceState(null,"",link.hash);
+  target.setAttribute("tabindex","-1");target.focus({preventScroll:true});
+  target.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",block:"start"});
+});
+function trackVisibleSection(){
+  navigationFrame=0;if($("dashboard").hidden||navigationOpen)return;
+  const offset=drawerQuery.matches?88:32;
+  const rows=[...document.querySelectorAll("#sidebar nav a")].filter(a=>!a.hidden).map(a=>document.querySelector(a.hash)).filter(n=>n&&!n.hidden).map(n=>({id:n.id,rect:n.getBoundingClientRect()}));
+  const current=rows.filter(r=>r.rect.top<=offset+100&&r.rect.bottom>offset).sort((a,b)=>b.rect.top-a.rect.top)[0];
+  if(current)setActiveSection(current.id);
+}
+window.addEventListener("scroll",()=>{if(!navigationFrame)navigationFrame=requestAnimationFrame(trackVisibleSection);},{passive:true});
+function syncNavigation(){
+  $("nav-detected").hidden=$("detected-panel").hidden;$("nav-paqet").hidden=$("paqet-manager").hidden;
+  $("mobile-role").textContent=state?.role==="foreign"?"سرور خارج":"سرور ایران";
+}
+function closeInspector(){document.body.classList.remove("inspector-open");if($("inspector-dialog").open)$("inspector-dialog").close();inspectorSource=null;$("inspector-content").value="";}
+function openInspector(source){
+  inspectorSource=source;$("inspector-title").textContent=source==="logs"?"لاگ زندهٔ سرویس":"نمای بزرگ تنظیمات";
+  $("inspector-note").textContent=source==="logs"?"همان لاگ سرویس انتخاب‌شده؛ دریافت زنده از پنل ادامه دارد.":"نمای خواندنی؛ برای تغییر و ذخیره از ویرایشگر اصلی استفاده کن.";
+  $("inspector-status").textContent="";$("inspector-content").value=source==="logs"?$("detected-logs").textContent:$("detected-config").value;
+  document.body.classList.add("inspector-open");$("inspector-dialog").showModal();$("inspector-close").focus();
+}
+$("inspector-close").onclick=()=>closeInspector();
+$("inspector-dialog").addEventListener("close",()=>{document.body.classList.remove("inspector-open");inspectorSource=null;$("inspector-content").value="";});
+$("inspector-dialog").addEventListener("click",event=>{if(event.target!==$("inspector-dialog"))return;const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeInspector();});
+$("inspector-copy").onclick=async()=>{try{const value=$("inspector-content").value;if(navigator.clipboard)await navigator.clipboard.writeText(value);else{$("inspector-content").select();if(!document.execCommand("copy"))throw Error();}$("inspector-status").textContent="محتوا کپی شد.";}catch{$("inspector-status").textContent="کپی در این مرورگر در دسترس نیست؛ متن را انتخاب و کپی کن.";}};
+$("detected-expand-logs").onclick=()=>openInspector("logs");$("detected-expand-config").onclick=()=>openInspector("config");
+function syncInspector(){
+  if(inspectorSource!=="logs"||!$("inspector-dialog").open)return;
+  const view=$("inspector-content"),atEnd=view.scrollHeight-view.scrollTop-view.clientHeight<50,top=view.scrollTop;
+  view.value=$("detected-logs").textContent;view.scrollTop=atEnd?view.scrollHeight:top;
+}
 const modeNames={enabled:"فعال",disabled:"غیرفعال",draining:"در حال تخلیه"};
 const eventNames={"path-health":"سلامت مسیر","operator":"عملیات مدیر","login":"ورود مدیر","login-failed":"ورود ناموفق","route-change":"تغییر مسیر","backend-connect-failed":"مقصد در دسترس نیست","unit-state":"وضعیت سرویس","foreign-action":"مدیریت خارج","provision":"نصب تانل"};
 function render(d){
@@ -91,6 +168,7 @@ function render(d){
   $("updated").textContent="به‌روز هر ۳ ثانیه";
   if(foreign)renderForeign(d);
   else if(d.bootstrap)notice("پنل ایران آماده است؛ برای نصب فعلی از بخش تشخیص سرویس‌های موجود استفاده کن.");
+  syncNavigation();
   $("uptime").textContent="زمان فعالیت: "+fa(Math.floor(d.uptime/60))+" دقیقه";
 }
 function eventDescription(e){
@@ -122,7 +200,7 @@ function refresh(){
   return refreshTask;
 }
 api("/api/session").then(d=>{csrf=d.csrf;loggedIn();}).catch(()=>loggedOut());
-setInterval(()=>{if(!$("dashboard").hidden)refresh();},3000);
+setInterval(()=>{if(!$("dashboard").hidden&&!document.hidden)refresh();},3000);
 
 // Typed installer workflow; installation continues on the server after logout.
 let setupState=null, setupPlan=null, setupRequest=false, setupPolling=false;
@@ -199,7 +277,7 @@ $("setup-confirm").onchange=()=>$("setup-start").disabled=!setupPlan||!$("setup-
 $("setup-copy-key").onclick=async()=>{try{if(navigator.clipboard)await navigator.clipboard.writeText($("setup-public-key").value);else{$("setup-public-key").select();if(!document.execCommand("copy"))throw Error();}toast("کلید عمومی کپی شد.");}catch{toast("کلید عمومی را از کادر انتخاب و کپی کن.");}};
 function renderSetup(data){
   setupState=data;renderDetected(data.inventory,false,data.remote_inventory);const available=data.available;
-  if(data.paqet_capabilities)initPaqetFields(data.paqet_capabilities);renderPaqet(data.paqet,false);
+  if(data.paqet_capabilities)initPaqetFields(data.paqet_capabilities);renderPaqet(data.paqet,false);syncNavigation();
   $("setup-status").textContent=available?(data.busy?"نصب در حال اجرا":"آمادهٔ راه‌اندازی"):"نیاز به فعال‌سازی";$("setup-status").className="badge "+(available?"good":"bad");
   $("setup-unavailable").hidden=!!available;$("setup-unavailable").textContent=data.reason||"سرویس نصب خودکار در دسترس نیست.";
   $("setup-controls").hidden=!available;if(!available)return;
@@ -223,7 +301,8 @@ $("manual-connection-form").onsubmit=async e=>{e.preventDefault();try{const p=aw
 $("setup-form").onsubmit=async e=>{e.preventDefault();invalidatePlan();$("setup-error").textContent="";const transports=[...$("setup-transports").querySelectorAll("input:checked")].map(n=>n.value);if(!transports.length){$("setup-error").textContent="حداقل یک پروتکل انتخاب کن.";return;}const services=transports.includes("paqet")&&$("paqet-native-only").checked?[]:[...$("setup-services").children].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(n=>[n.dataset.field,n.value.trim()])));const spec={profile_id:$("setup-profile").value,iran:$("setup-iran").value.trim(),services,transports,experimental:$("setup-experimental").checked,open_ufw:$("setup-open-ufw").checked,base_port:Number($("setup-base").value),carrier_base:Number($("setup-carrier").value),health_port:Number($("setup-health").value),paqet_port:Number($("setup-paqet").value)};if($("setup-foreign").value.trim())spec.foreign=$("setup-foreign").value.trim();if($("setup-browser").value)spec.browser_port=Number($("setup-browser").value);if(transports.includes("paqet")){spec.paqet_options=gatherPaqet();spec.paqet_keep_secrets=$("paqet-keep").checked;}try{const p=await setupCall("/api/provision/preview",spec);setupPlan=p;$("setup-review-summary").textContent=p.summary.iran+" ⇄ "+p.summary.foreign+" · "+p.summary.transports.join(" + ")+" · "+fa(p.summary.services.length)+" سرویس";$("setup-firewall").replaceChildren(...["iran","foreign"].map(role=>{const n=el("div");n.append(el("strong",role==="iran"?"پورت‌های ورودی ایران":"پورت‌های ورودی خارج"));["tcp","udp"].forEach(proto=>{n.append(el("code",proto.toUpperCase()+": "+(p.summary.firewall[role][proto].join(", ")||"—")));});return n;}));$("setup-review").hidden=false;$("setup-confirm").checked=false;$("setup-review").scrollIntoView({behavior:"smooth",block:"nearest"});}catch(e){$("setup-error").textContent=e.message;}};
 $("setup-start").onclick=async()=>{if(!setupPlan||!$("setup-confirm").checked)return;try{await setupCall("/api/provision/start",{plan_id:setupPlan.id,confirm_replace:true});invalidatePlan();await pollSetup();toast("عملیات نصب شروع شد؛ مراحل روی سرور ادامه پیدا می‌کنند.");}catch(e){$("setup-error").textContent=e.message;toast(e.message);}};
 $("setup-details").addEventListener("toggle",()=>{if($("setup-details").open)pollSetup();});
-setInterval(()=>{if(csrf)pollSetup();},4000);
+setInterval(()=>{if(csrf&&!document.hidden)pollSetup();},4000);
+document.addEventListener("visibilitychange",()=>{if(csrf&&!document.hidden){refresh();pollSetup();pollDetectedLogs();}});
 
 // Foreign role has local controls and dated end-to-end observations, not routing.
 let displayedRole="",foreignPending=false;
@@ -271,11 +350,27 @@ function syncPaqetInputs(){const enabled=[...$("setup-transports").querySelector
 $("setup-transports").addEventListener("change",syncPaqetInputs);$("paqet-native-only").onchange=syncPaqetInputs;
 
 let detectedState=null,detectedForeign=false,detectedRemote=null,detectedSelected=null,detectedBusy=false,detectedCursor=null,detectedLines=[],detectedLogBusy=false,lastDetectedTest=0;
+const detectedCards=new Map();
 function selectedDetected(){return detectedState?.services?.find(r=>r.id===detectedSelected);}
 function renderDetected(inventory,foreign,remote){
-  if(!inventory)return;detectedState=inventory;detectedForeign=foreign;detectedRemote=remote||null;$("detected-panel").hidden=false;
+  if(!inventory)return;detectedState=inventory;detectedForeign=foreign;detectedRemote=remote||null;$("detected-panel").hidden=false;$("nav-detected").hidden=false;
   $("detected-count").textContent=fa(inventory.services.length)+" سرویس شناسایی‌شده";$("detected-error").textContent=inventory.error||(!inventory.services.length?"فعلاً سرویس شناخته‌شده‌ای دیده نشده است.":"");
-  $("detected-list").replaceChildren(...inventory.services.map(row=>{const card=el("article",undefined,"detected-service"+(row.id===detectedSelected?" selected":""));card.append(el("strong",row.engine),el("code",row.unit),el("span",row.active?"در حال اجرا":"خاموش / "+row.state,"badge "+(row.active?"good":"")),el("p",(row.role==="client"?"ایران / client":row.role==="server"?"خارج / server":"سرویس موجود")+" · "+(row.management_enabled?"مدیریت فعال":"فقط مشاهده"),"field-help"));if(row.config_error)card.append(el("p",row.config_error,"field-help"));if(row.engine==="paqet"){const b=el("button","مشاهده و مدیریت");b.type="button";b.onclick=()=>selectDetected(row.id);card.append(b);}return card;}));
+  const ids=new Set();
+  for(const row of inventory.services){
+    ids.add(row.id);let view=detectedCards.get(row.id);
+    if(!view){
+      const card=el("article",undefined,"detected-service"),engine=el("strong"),unit=el("code"),status=el("span"),description=el("p",undefined,"field-help"),error=el("p",undefined,"field-help"),button=el("button","مشاهده و مدیریت");
+      button.type="button";button.setAttribute("aria-controls","detected-detail");button.onclick=()=>selectDetected(row.id);
+      card.append(engine,unit,status,description,error,button);view={card,engine,unit,status,description,error,button};detectedCards.set(row.id,view);$("detected-list").append(card);
+    }
+    view.card.classList.toggle("selected",row.id===detectedSelected);view.engine.textContent=row.engine;view.unit.textContent=row.unit;
+    view.status.textContent=row.active?"در حال اجرا":"خاموش / "+row.state;view.status.className="badge "+(row.active?"good":"");
+    view.description.textContent=(row.role==="client"?"ایران / client":row.role==="server"?"خارج / server":"سرویس موجود")+" · "+(row.management_enabled?"مدیریت فعال":"فقط مشاهده");
+    view.error.textContent=row.config_error||"";view.error.hidden=!row.config_error;view.button.hidden=row.engine!=="paqet";
+    view.button.setAttribute("aria-label","مشاهده و مدیریت "+row.unit);view.button.setAttribute("aria-expanded",String(row.id===detectedSelected));
+  }
+  for(const [id,view] of detectedCards)if(!ids.has(id)){view.card.remove();detectedCards.delete(id);}
+
   const row=selectedDetected();$("detected-detail").hidden=!row;if(!row)return;
   $("detected-title").textContent=row.unit+" · "+(row.active?"روشن":"خاموش");$("detected-file").textContent=row.config_path||"مسیر تنظیمات تشخیص داده نشد";
   $("detected-manage").textContent=row.management_enabled?"لغو مدیریت؛ سرویس حفظ می‌شود":"فعال‌کردن مدیریت همین سرویس";$("detected-manage").disabled=detectedBusy||(!row.editable&&!row.management_enabled);
@@ -287,7 +382,7 @@ function renderDetected(inventory,foreign,remote){
   $("detected-test").disabled=detectedBusy||(!foreign&&!setupState?.profiles?.length);
   $("detected-auto-test").disabled=foreign;
 }
-function selectDetected(id){detectedSelected=id;detectedCursor=null;detectedLines=[];$("detected-logs").textContent="در انتظار journal…";$("detected-result").textContent="";$("detected-confirm").checked=false;$("detected-auto-test").checked=false;loadDetectedConfig();renderDetected(detectedState,detectedForeign,detectedRemote);$("detected-detail").scrollIntoView({block:"nearest",behavior:"smooth"});pollDetectedLogs();}
+function selectDetected(id){closeInspector();detectedSelected=id;detectedCursor=null;detectedLines=[];$("detected-logs").textContent="در انتظار journal…";$("detected-result").textContent="";$("detected-confirm").checked=false;$("detected-auto-test").checked=false;loadDetectedConfig();renderDetected(detectedState,detectedForeign,detectedRemote);$("detected-detail").scrollIntoView({block:"nearest",behavior:"smooth"});pollDetectedLogs();}
 function loadDetectedConfig(){const row=selectedDetected();if(!row)return;$("detected-config").value=JSON.stringify(row.config||{},null,2);$("detected-config").dataset.revision=row.revision||"";}
 async function detectedAction(action,extra={}){
  const row=selectedDetected();if(!row||detectedBusy)return;detectedBusy=true;$("detected-result").textContent="در حال اجرا…";renderDetected(detectedState,detectedForeign,detectedRemote);
@@ -301,5 +396,5 @@ async function detectedAction(action,extra={}){
 $("detected-manage").onclick=()=>detectedAction("manage",{enabled:!selectedDetected()?.management_enabled});["start","stop","restart","test"].forEach(op=>$("detected-"+op).onclick=()=>detectedAction(op));
 $("detected-confirm").onchange=()=>renderDetected(detectedState,detectedForeign,detectedRemote);$("detected-reload").onclick=async()=>{const row=selectedDetected();if(!row)return;try{const inventory=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",{id:row.id,action:"inspect"});renderDetected(inventory,detectedForeign,detectedRemote);loadDetectedConfig();}catch(e){$("detected-result").textContent=e.message;}};
 $("detected-save").onclick=()=>{try{const cfg=JSON.parse($("detected-config").value);detectedAction("edit",{revision:$("detected-config").dataset.revision,config:cfg,ack_peer_change:$("detected-confirm").checked});}catch{$("detected-result").textContent="تنظیمات باید JSON معتبر باشد.";}};
-async function pollDetectedLogs(){const row=selectedDetected();if(!csrf||!row||!$("detected-live").checked||detectedLogBusy||document.hidden)return;detectedLogBusy=true;const id=row.id;try{const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",{id,action:"logs",cursor:detectedCursor});if(id!==detectedSelected)return;detectedCursor=result.cursor;detectedLines.push(...result.lines.map(l=>(l.time?new Date(Number(l.time)/1000).toLocaleTimeString("fa-IR")+" · ":"")+l.message));detectedLines=detectedLines.slice(-300);$("detected-logs").textContent=detectedLines.join("\n")||"رویداد تازه‌ای در journal نیست؛ سطح لاگ فعلی موتور ممکن است none باشد.";if(result.reason)$("detected-logs").textContent=result.reason;if(result.truncated)$("detected-result").textContent="خروجی journal محدود شد؛ آخرین پیام‌های دریافت‌شده نمایش داده می‌شوند.";}catch(e){$("detected-logs").textContent=e.message;}finally{detectedLogBusy=false;}}
+async function pollDetectedLogs(){const row=selectedDetected();if(!csrf||!row||!$("detected-live").checked||detectedLogBusy||document.hidden)return;detectedLogBusy=true;const id=row.id;try{const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",{id,action:"logs",cursor:detectedCursor});if(id!==detectedSelected)return;detectedCursor=result.cursor;detectedLines.push(...result.lines.map(l=>(l.time?new Date(Number(l.time)/1000).toLocaleTimeString("fa-IR")+" · ":"")+l.message));detectedLines=detectedLines.slice(-300);$("detected-logs").textContent=detectedLines.join("\n")||"رویداد تازه‌ای در journal نیست؛ سطح لاگ فعلی موتور ممکن است none باشد.";if(result.reason)$("detected-logs").textContent=result.reason;syncInspector();if(result.truncated)$("detected-result").textContent="خروجی journal محدود شد؛ آخرین پیام‌های دریافت‌شده نمایش داده می‌شوند.";}catch(e){$("detected-logs").textContent=e.message;}finally{detectedLogBusy=false;}}
 setInterval(()=>{pollDetectedLogs();if(csrf&&!document.hidden&&$("detected-auto-test").checked&&!detectedForeign&&selectedDetected()&&Date.now()-lastDetectedTest>15000){lastDetectedTest=Date.now();detectedAction("test");}},2000);

@@ -63,6 +63,7 @@ jobs:
       - run: pip install .
       - run: npm install --no-save playwright@1.62.1
       - run: node scripts/test-ui.cjs
+      - run: node scripts/test-responsive-ui.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
