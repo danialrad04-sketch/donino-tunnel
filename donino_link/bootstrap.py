@@ -128,8 +128,9 @@ def install(role,address,password=None,panel_port=None,agent_port=9444,open_ufw=
     if existing:
         service='donino-control.service' if role=='iran' else 'donino-foreign-agent.service'
         subprocess.run(['systemctl','restart',service],check=True)
-    cfg=load_config(LIVE);host=address if ':' not in address else '['+address+']'
-    return {'role':role,'panel':f'http://{host}:{endpoint(cfg["panel"]["listen"])[1]}','paired':False,
+    cfg=load_config(LIVE);address=cfg.get('public_address',address);host=address if ':' not in address else '['+address+']'
+    scheme='https' if cfg['panel'].get('tls_cert') else 'http'
+    return {'role':role,'panel':f'{scheme}://{host}:{endpoint(cfg["panel"]["listen"])[1]}','paired':False,
             'next':'Open the foreign panel, generate a pairing code, then enter it in the Iran panel.'}
 
 

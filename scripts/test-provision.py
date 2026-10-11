@@ -64,8 +64,10 @@ def main():
             password_file=work/'fixture-password';password_file.write_text(PASSWORD+'\n');password_file.chmod(0o600)
             for node in ['foreign','iran']:
                 options=['--allow-private-peers'] if node=='iran' else []
-                entry='/source/install-donino.sh' if node=='foreign' else '/source/scripts/setup.sh'
-                execute(node,'bash',entry,'--role',node,'--address',ips[node],'--password-file','/work/fixture-password',*options)
+                entry='/source/install-donino.sh'
+                # Exercise the same interactive role/IP menu operators use.
+                answer=('2' if node=='foreign' else '1')+'\n'+ips[node]+'\n'
+                execute(node,'bash',entry,'--password-file','/work/fixture-password',*options,data=answer.encode())
             report['standalone_single_file_and_repository_entrypoints']=True
             # An unrelated operator SSH key must survive pairing and revocation.
             execute('foreign','ssh-keygen','-q','-t','ed25519','-N','','-f','/tmp/operator-key')
@@ -90,6 +92,29 @@ def main():
             else:raise RuntimeError('standalone role panels unavailable')
             assert api('/api/status')['bootstrap'] and not api('/api/status')['paths']
             assert foreign_api('/api/status')['role']=='foreign'
+            report['interactive_role_selection']=True
+            # Upgrade through the installer menu without re-entering a password.
+            # Then restart the whole disposable node, checking real boot enablement.
+            for node in ['foreign','iran']:
+                services=['donino-link.service','donino-control.service' if node=='iran' else 'donino-foreign-agent.service']
+                before=execute(node,'sha256sum','/etc/donino-link/current/node.json','/var/lib/donino-link/'+node+'-admin.json')
+                execute(node,'bash','/source/install-donino.sh',data=b'1\n')
+                assert before==execute(node,'sha256sum','/etc/donino-link/current/node.json','/var/lib/donino-link/'+node+'-admin.json'),node+' upgrade changed config/authentication'
+                for service in services:execute(node,'systemctl','is-enabled','--quiet',service)
+                run('docker','restart',PREFIX+'-'+node)
+            for _ in range(60):
+                try:
+                    login();foreign_login()
+                    assert api('/api/provision/state')['available'] and foreign_api('/api/foreign/state')['available']
+                    assert api('/api/status')['role']=='iran' and foreign_api('/api/status')['role']=='foreign'
+                    for node in ['iran','foreign']:
+                        for service in ['donino-link.service','donino-control.service' if node=='iran' else 'donino-foreign-agent.service']:
+                            execute(node,'systemctl','is-active','--quiet',service)
+                    break
+                except (OSError,AssertionError,RuntimeError):time.sleep(1)
+            else:raise RuntimeError('panels/controller/agent did not recover after node restart')
+            report['menu_upgrade_preserves_config_and_password']=True
+            report['both_role_panels_start_after_node_restart']=True
             code=foreign_api('/api/foreign/code',{})
             try:p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as error:
