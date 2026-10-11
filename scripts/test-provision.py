@@ -59,7 +59,6 @@ def main():
             for node in ['iran','foreign']:
                 for port in ([22,8090,24443,18080] if node=='iran' else [22]):execute(node,'ufw','allow',str(port)+'/tcp','comment','fixture-existing')
                 execute(node,'ufw','--force','enable')
-            execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
             # Install exactly the terminal entry point users run on EACH host.
             password_file=work/'fixture-password';password_file.write_text(PASSWORD+'\n');password_file.chmod(0o600)
             for node in ['foreign','iran']:
@@ -115,6 +114,9 @@ def main():
             else:raise RuntimeError('panels/controller/agent did not recover after node restart')
             report['menu_upgrade_preserves_config_and_password']=True
             report['both_role_panels_start_after_node_restart']=True
+            # The origin fixture is a plain child process, so start it AFTER
+            # the boot test. A node restart intentionally kills non-unit tasks.
+            execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
             code=foreign_api('/api/foreign/code',{})
             try:p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as error:
