@@ -100,6 +100,7 @@ function openInspector(source){
   document.body.classList.add("inspector-open");$("inspector-dialog").showModal();$("inspector-close").focus();
 }
 $("inspector-close").onclick=()=>closeInspector();
+$("inspector-dialog").addEventListener("cancel",event=>{event.preventDefault();closeInspector();});
 $("inspector-dialog").addEventListener("close",()=>{document.body.classList.remove("inspector-open");inspectorSource=null;$("inspector-content").value="";});
 $("inspector-dialog").addEventListener("click",event=>{if(event.target!==$("inspector-dialog"))return;const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeInspector();});
 $("inspector-copy").onclick=async()=>{try{const value=$("inspector-content").value;if(navigator.clipboard)await navigator.clipboard.writeText(value);else{$("inspector-content").select();if(!document.execCommand("copy"))throw Error();}$("inspector-status").textContent="محتوا کپی شد.";}catch{$("inspector-status").textContent="کپی در این مرورگر در دسترس نیست؛ متن را انتخاب و کپی کن.";}};
