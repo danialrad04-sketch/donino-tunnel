@@ -76,10 +76,11 @@ for service in "${services[@]}"; do
   systemctl is-active --quiet "$service"
   systemctl is-enabled --quiet "$service"
 done
-panel_url=$("$stage/venv/bin/python" - <<'PYURL'
+panel_url=$("$stage/venv/bin/python" - "$address" <<'PYURL'
+import sys
 from donino_link.config import load_config,endpoint
 cfg=load_config('/etc/donino-link/current/node.json')
-host=cfg['public_address'];host='['+host+']' if ':' in host else host
+host=cfg.get('public_address') or sys.argv[1];host='['+host+']' if ':' in host else host
 scheme='https' if cfg['panel'].get('tls_cert') else 'http'
 print(scheme+'://'+host+':'+str(endpoint(cfg['panel']['listen'])[1]))
 PYURL
