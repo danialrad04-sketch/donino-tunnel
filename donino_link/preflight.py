@@ -63,7 +63,8 @@ def check(node):
             # through a scoped AppArmor profile while correctly denying unshare.
             launch=subprocess.run(['runuser','-u','donino-link','--',browser,'--headless=new','--disable-setuid-sandbox',
                 '--disable-dev-shm-usage','--no-first-run','--no-default-browser-check',
-                '--user-data-dir='+profile,'--dump-dom','about:blank'],capture_output=True,timeout=20)
+                '--user-data-dir='+profile,'--dump-dom','about:blank'],capture_output=True,timeout=20,
+                env={**os.environ,'XDG_CONFIG_HOME':str(Path(profile)/'config'),'XDG_CACHE_HOME':str(Path(profile)/'cache')})
             if launch.returncode or b'<html' not in launch.stdout.lower():
                 raise ValueError('Native Chromium sandbox startup failed before activation: '+launch.stderr.decode(errors='replace')[-1200:])
     if install['role'] == 'foreign':

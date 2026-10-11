@@ -15,6 +15,10 @@ previous_dir=$(readlink -f /opt/donino-link/current || true)
 switched=0
 rollback_on_error() {
   echo 'Installation failed; reverting Donino Link service changes.' >&2
+  if [[ -e "$release_dir/venv/bin/python" ]]; then
+    namei -l "$release_dir/venv/bin/python" >&2 || true
+    runuser -u donino-link -- "$release_dir/venv/bin/python" --version >&2 || true
+  fi
   if [[ $switched == 1 ]]; then bash "$release_dir/scripts/rollback.sh" "$release_dir" || true; fi
 }
 trap rollback_on_error ERR

@@ -33,7 +33,8 @@ async function initialize(config) {
     if (process.getuid()!==0 || process.env.DONINO_TEST!=='1') throw Error('test sandbox exception forbidden');
     flags.push('--no-sandbox');
   }
-  chrome=spawn(config.chromium||'/usr/bin/chromium',flags,{stdio:['ignore','ignore','pipe','pipe','pipe']});
+  chrome=spawn(config.chromium||'/usr/bin/chromium',flags,{stdio:['ignore','ignore','pipe','pipe','pipe'],
+    env:{...process.env,XDG_CONFIG_HOME:path.join(profile,'config'),XDG_CACHE_HOME:path.join(profile,'cache')}});
   chrome.on('error',()=>shutdown(1));
   let startupDiagnostics='';
   chrome.on('exit',()=>{if(!session&&startupDiagnostics)process.stderr.write('Chromium startup: '+startupDiagnostics+'\n');shutdown(1);});

@@ -40,7 +40,17 @@ donino_platform() {
 }
 
 donino_apt() {
-  DEBIAN_FRONTEND=noninteractive apt-get "${DONINO_APT_OPTIONS[@]}" -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 "$@"
+  local result
+  if DEBIAN_FRONTEND=noninteractive apt-get "${DONINO_APT_OPTIONS[@]}" -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 "$@"; then
+    return 0
+  else result=$?; fi
+  # Archive migration may lag behind the end-of-life date. If the official
+  # archive is not available yet, use the still-live configured host sources.
+  if [[ ${1:-} == update && "$DONINO_EOL" == true && ${#DONINO_APT_OPTIONS[@]} -gt 0 ]]; then
+    echo 'Archived indexes unavailable; trying the current host APT sources.' >&2
+    DONINO_APT_OPTIONS=()
+    DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=120 "$@"
+  else return "$result"; fi
 }
 
 # Ubuntu's time64 transition renamed several libraries. Select real candidates,

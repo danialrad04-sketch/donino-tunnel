@@ -52,6 +52,13 @@ donino_platform "{release}"
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('options=0',result.stdout)
 
+    def test_archive_migration_falls_back_to_live_host_sources(self):
+        body='apt-get() { if [[ "$*" == *Dir::Etc::sourcelist* ]]; then return 100; fi; echo live-host-sources; }; donino_apt update -q; echo "options=${#DONINO_APT_OPTIONS[@]}"'
+        result=self.shell('ubuntu','25.10',body)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('live-host-sources',result.stdout)
+        self.assertIn('options=0',result.stdout)
+
     def test_time64_candidate_and_fallback(self):
         for expected in ['libasound2t64','libasound2']:
             body='apt-cache() { if [[ "$2" == '+expected+' ]]; then echo "Candidate: 1.0"; else echo "Candidate: (none)"; fi; }; donino_package libasound2t64 libasound2'
