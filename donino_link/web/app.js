@@ -84,10 +84,11 @@ function trackVisibleSection(){
   navigationFrame=0;if($("dashboard").hidden||navigationOpen)return;
   const offset=drawerQuery.matches?88:32;
   const rows=[...document.querySelectorAll("#sidebar nav a")].filter(a=>!a.hidden).map(a=>document.querySelector(a.hash)).filter(n=>n&&!n.hidden).map(n=>({id:n.id,rect:n.getBoundingClientRect()}));
-  const current=rows.filter(r=>r.rect.top<=offset+100&&r.rect.bottom>offset).sort((a,b)=>b.rect.top-a.rect.top)[0];
+  const current=rows.filter(r=>r.rect.top<=offset+100).sort((a,b)=>b.rect.top-a.rect.top)[0]||rows.sort((a,b)=>a.rect.top-b.rect.top)[0];
   if(current)setActiveSection(current.id);
 }
 window.addEventListener("scroll",()=>{if(!navigationFrame)navigationFrame=requestAnimationFrame(trackVisibleSection);},{passive:true});
+window.addEventListener("resize",()=>{if(!navigationFrame)navigationFrame=requestAnimationFrame(trackVisibleSection);});
 function syncNavigation(){
   $("nav-detected").hidden=$("detected-panel").hidden;$("nav-paqet").hidden=$("paqet-manager").hidden;
   $("mobile-role").textContent=state?.role==="foreign"?"سرور خارج":"سرور ایران";

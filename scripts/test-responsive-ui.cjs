@@ -78,7 +78,7 @@ async function main(){
      }else{assert.equal(await page.locator('#sidebar').evaluate(n=>n.inert),false);await contrast(page);}
      results.push({role,theme,width,mode:mobile?'Android touch emulation':'Windows desktop UA',overflow:false,menu_contrast_aa:true});
     }
-    await page.setViewportSize({width:mobile?390:1440,height:mobile?844:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'.png')});
+    await page.setViewportSize({width:mobile?390:1440,height:mobile?844:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.waitForFunction(()=>document.querySelector('#sidebar a[href="#overview"]').getAttribute('aria-current')==='location');await page.screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'.png')});
     const card=page.locator('.detected-service').filter({hasText:role==='iran'?'vendor-edge.service':'vendor-exit.service'}).getByRole('button');await card.click();await card.focus();
     await page.evaluate(async role=>role==='iran'?await pollSetup():await refresh(),role);assert.equal(await card.evaluate(n=>n===document.activeElement),true,'polling stole service-button focus');
     if(!await page.locator('#detected-config-details').evaluate(n=>n.open))await page.locator('#detected-config-details summary').click();
