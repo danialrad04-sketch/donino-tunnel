@@ -17,7 +17,7 @@ flag=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
 before=$(cat "$flag" 2>/dev/null || true)
 donino_browser "$python"
 [[ "$before" == "$(cat "$flag" 2>/dev/null || true)" ]]
-"$python" - "$DONINO_CHROMIUM" <<'PY'
+"$python" -I - "$DONINO_CHROMIUM" <<'PY'
 import json,sys,tempfile
 from pathlib import Path
 from donino_link.preflight import check
