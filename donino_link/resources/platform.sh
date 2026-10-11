@@ -34,7 +34,11 @@ donino_platform() {
     printf 'deb http://old-releases.ubuntu.com/ubuntu/ %s main restricted universe multiverse\n' \
       "$DONINO_CODENAME" "$DONINO_CODENAME-updates" "$DONINO_CODENAME-security" > "$sources"
     chmod 0644 "$sources"
-    DONINO_APT_OPTIONS=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-')
+    install -d -m 0755 "$archive_dir/lists-$VERSION_ID"
+    DONINO_APT_OPTIONS=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-'
+      -o "Dir::State::lists=$archive_dir/lists-$VERSION_ID"
+      -o "Dir::Cache::pkgcache=$archive_dir/pkg-$VERSION_ID.bin"
+      -o "Dir::Cache::srcpkgcache=$archive_dir/srcpkg-$VERSION_ID.bin")
   fi
   echo "Platform: $ID $VERSION_ID ($(dpkg --print-architecture))"
 }

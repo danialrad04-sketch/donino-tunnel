@@ -43,6 +43,7 @@ donino_platform "{release}"
         result=self.shell('ubuntu','23.10',body)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('Dir::Etc::sourceparts=-',result.stdout)
+        self.assertIn('Dir::State::lists=',result.stdout)
         self.assertIn('http://old-releases.ubuntu.com/ubuntu/ mantic-security',result.stdout)
         self.assertNotIn('trusted=yes',result.stdout)
         self.assertNotIn('AllowUnauthenticated',result.stdout)

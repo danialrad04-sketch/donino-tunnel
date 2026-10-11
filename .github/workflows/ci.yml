@@ -2,6 +2,9 @@ name: Verify Donino Link
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: donino-verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-24.04

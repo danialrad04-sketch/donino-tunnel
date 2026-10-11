@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -61,12 +62,20 @@ def check(node):
             os.chown(profile,account.pw_uid,account.pw_gid)
             # Test the actual executable: Ubuntu may permit Chrome namespaces
             # through a scoped AppArmor profile while correctly denying unshare.
-            launch=subprocess.run(['runuser','-u','donino-link','--',browser,'--headless=new','--disable-setuid-sandbox',
+            command=['runuser','-u','donino-link','--',browser,'--headless=new','--disable-setuid-sandbox',
                 '--disable-dev-shm-usage','--no-first-run','--no-default-browser-check',
-                '--user-data-dir='+profile,'--dump-dom','about:blank'],capture_output=True,timeout=20,
+                '--disable-background-networking','--disable-component-update','--disable-sync','--disable-extensions',
+                '--user-data-dir='+profile,'--timeout=5000','--dump-dom','about:blank']
+            launch=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True,
                 env={**os.environ,'XDG_CONFIG_HOME':str(Path(profile)/'config'),'XDG_CACHE_HOME':str(Path(profile)/'cache')})
-            if launch.returncode or b'<html' not in launch.stdout.lower():
-                raise ValueError('Native Chromium sandbox startup failed before activation: '+launch.stderr.decode(errors='replace')[-1200:])
+            try:
+                stdout,stderr=launch.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                os.killpg(launch.pid,signal.SIGKILL)
+                _,stderr=launch.communicate()
+                raise ValueError('Native Chromium sandbox startup timed out before activation: '+stderr.decode(errors='replace')[-1200:])
+            if launch.returncode or b'<html' not in stdout.lower():
+                raise ValueError('Native Chromium sandbox startup failed before activation: '+stderr.decode(errors='replace')[-1200:])
     if install['role'] == 'foreign':
         config = json.loads((node/'node.json').read_text())
         for name, target in config.get('targets', {}).items():

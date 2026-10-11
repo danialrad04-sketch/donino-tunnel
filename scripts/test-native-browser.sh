@@ -9,6 +9,7 @@ donino_apt update -q
 donino_apt install -y -q --no-install-recommends python3 python3-venv openssl iproute2 util-linux
 id donino-link >/dev/null 2>&1 || useradd --system --user-group --home /var/lib/donino-link --shell /usr/sbin/nologin donino-link
 install -d -m 0700 -o donino-link -g donino-link /var/lib/donino-link
+install -d -m 0750 -o root -g donino-link /opt/donino-link
 python3 -m venv /opt/donino-link/native-browser-test
 python=/opt/donino-link/native-browser-test/bin/python
 "$python" -m pip install "$source_dir"

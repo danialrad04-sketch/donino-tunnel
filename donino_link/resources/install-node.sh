@@ -31,7 +31,7 @@ donino_apt update -q
 donino_apt install -y -q --no-install-recommends python3 python3-venv python3-pip openssl iproute2 iputils-ping iptables ca-certificates openssh-client util-linux
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python 3.10+ required"'
 id donino-link >/dev/null 2>&1 || useradd --system --user-group --home /var/lib/donino-link --shell /usr/sbin/nologin donino-link
-install -d -m 0750 -o root -g donino-link /etc/donino-link /opt/donino-link/releases
+install -d -m 0750 -o root -g donino-link /etc/donino-link /opt/donino-link /opt/donino-link/releases
 install -d -m 0700 -o donino-link -g donino-link /var/lib/donino-link
 install -d -m 0750 -o root -g donino-link "$release_dir"
 cp -a "$source_dir/donino_link" "$source_dir/scripts" "$source_dir/pyproject.toml" "$source_dir/node" "$release_dir/"
