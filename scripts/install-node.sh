@@ -103,7 +103,13 @@ while IFS= read -r service; do
   systemctl restart "$service"
 done < <(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["units"]))' "$release_dir/node/install.json")
 sleep 2
-while IFS= read -r service; do systemctl is-active --quiet "$service"; done < <(
+while IFS= read -r service; do
+  if ! systemctl is-active --quiet "$service"; then
+    echo "Service did not start: $service" >&2
+    systemctl show "$service" --property=ActiveState,SubState,Result,ExecMainStatus >&2 || true
+    false
+  fi
+done < <(
   python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["units"]))' "$release_dir/node/install.json")
 role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["role"])' "$release_dir/node/install.json")
 if [[ "$role" == iran ]]; then

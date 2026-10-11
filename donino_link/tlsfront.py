@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import signal
 import ssl
+import sys
 from .config import endpoint,loopback
 
 
@@ -53,8 +54,11 @@ class TLSFront:
             self.connections.discard(task)
 
     async def start(self):
+        options={'ssl_handshake_timeout':10}
+        # ssl_shutdown_timeout was added in Python 3.11. Ubuntu 22 uses 3.10.
+        if sys.version_info >= (3,11):options['ssl_shutdown_timeout']=5
         self.server=await asyncio.start_server(self.handle,*endpoint(self.listen),ssl=self.context,
-                                               ssl_handshake_timeout=10,ssl_shutdown_timeout=5)
+                                               **options)
 
     async def stop(self):
         if self.server:
