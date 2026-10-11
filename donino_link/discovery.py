@@ -396,7 +396,10 @@ class Inventory:
         marker.unlink(missing_ok=True)
         for previous in sorted(backup.glob('*.original'))[:-10]:previous.unlink()
         self.checked=0
-        return {'ok':True,'restarted':row['active'],'backup_saved':True,'round_trip_verified':False}
+        # Return the committed revision and a redacted copy so a second save
+        # uses the exact file just written, rather than the editor's old hash.
+        return {'ok':True,'restarted':row['active'],'backup_saved':True,'round_trip_verified':False,
+                'revision':journal['new_hash'],'config':safe(cfg)}
     @synchronized
     def recover(self):
         marker=self.root/'import-edit.json'

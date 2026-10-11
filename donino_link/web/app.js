@@ -291,7 +291,11 @@ function selectDetected(id){detectedSelected=id;detectedCursor=null;detectedLine
 function loadDetectedConfig(){const row=selectedDetected();if(!row)return;$("detected-config").value=JSON.stringify(row.config||{},null,2);$("detected-config").dataset.revision=row.revision||"";}
 async function detectedAction(action,extra={}){
  const row=selectedDetected();if(!row||detectedBusy)return;detectedBusy=true;$("detected-result").textContent="در حال اجرا…";
- try{const body={id:row.id,action,...extra};if(action==="test"&&!detectedForeign)body.profile_id=$("setup-profile").value||setupState?.profiles?.[0]?.id;const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",body);$("detected-result").textContent=result.reason||result.error||(action==="test"?"TCP: "+String(result.tcp_ok)+" · UDP: "+String(result.udp_ok):action==="manage"?"اجازهٔ مدیریت تغییر کرد؛ خودِ سرویس تغییر نکرد.":action==="edit"?"انجام شد؛ فایل پشتیبان ذخیره شد. آزمون دوطرفه را دوباره اجرا کن.":"انجام شد؛ وضعیت و لاگ را بررسی کن.");if(action==="edit")$("detected-confirm").checked=false;await refresh();if(!detectedForeign)await pollSetup();}
+ try{const body={id:row.id,action,...extra};if(action==="test"&&!detectedForeign)body.profile_id=$("setup-profile").value||setupState?.profiles?.[0]?.id;const result=await api(detectedForeign?"/api/foreign/imported-action":"/api/provision/imported-action",body);if(row.id===detectedSelected){$("detected-result").textContent=result.reason||result.error||(action==="test"?"TCP: "+String(result.tcp_ok)+" · UDP: "+String(result.udp_ok):action==="manage"?"اجازهٔ مدیریت تغییر کرد؛ خودِ سرویس تغییر نکرد.":action==="edit"?"انجام شد؛ فایل پشتیبان ذخیره شد. آزمون دوطرفه را دوباره اجرا کن.":"انجام شد؛ وضعیت و لاگ را بررسی کن.");if(action==="edit"){
+   $("detected-confirm").checked=false;
+   $("detected-config").value=JSON.stringify(result.config,null,2);
+   $("detected-config").dataset.revision=result.revision;
+  }}await refresh();if(!detectedForeign)await pollSetup();}
  catch(e){$("detected-result").textContent=e.message;}finally{detectedBusy=false;if(detectedState)renderDetected(detectedState,detectedForeign,detectedRemote);}
 }
 $("detected-manage").onclick=()=>detectedAction("manage",{enabled:!selectedDetected()?.management_enabled});["start","stop","restart","test"].forEach(op=>$("detected-"+op).onclick=()=>detectedAction(op));

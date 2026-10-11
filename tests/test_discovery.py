@@ -110,6 +110,22 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(self.file.stat().st_mode&0o777,0o600)
         self.assertEqual(next((self.root/'import-backups'/row['id']).glob('*.original')).read_bytes(),old)
 
+    def test_edit_response_allows_second_save_and_still_rejects_concurrent_change(self):
+        row=self.selected();self.inventory.enable(row['id'],True)
+        cfg=row['config'];cfg['log']['level']='info'
+        first=self.inventory.edit(row['id'],row['revision'],cfg)
+        self.assertEqual(first['revision'],hashlib.sha256(self.file.read_bytes()).hexdigest())
+        self.assertNotEqual(first['revision'],row['revision'])
+        self.assertNotIn('private-',json.dumps(first))
+        self.assertEqual(first['config']['log']['level'],'info')
+        first['config']['log']['level']='warn'
+        second=self.inventory.edit(row['id'],first['revision'],first['config'])
+        self.assertEqual(second['revision'],hashlib.sha256(self.file.read_bytes()).hexdigest())
+        self.assertEqual(read_config(self.file)[0]['socks5'][0]['password'],'private-password-a')
+        self.file.write_bytes(self.file.read_bytes()+b'\n# operator edit\n')
+        with self.assertRaisesRegex(ValueError,'changed'):
+            self.inventory.edit(row['id'],second['revision'],second['config'])
+
     def test_restart_failure_restores_exact_original_file(self):
         row=self.selected();self.inventory.enable(row['id'],True);before=self.file.read_bytes()
         cfg=row['config'];cfg['log']['level']='info';self.fail_restart=True
