@@ -51,13 +51,14 @@ if [[ -z "$role" ]]; then
 fi
 [[ "$role" == iran || "$role" == foreign ]] || exit 1
 [[ -n "$address" ]] || read -r -p 'Public IP/domain of THIS server: ' address
-. /etc/os-release
-[[ "$ID" == debian && ( "$VERSION_ID" == 12 || "$VERSION_ID" == 13 ) || "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || { echo 'Supported: Debian 12/13 or Ubuntu 24.04.' >&2; exit 1; }
+source "$source_dir/donino_link/resources/platform.sh"
+donino_platform
 [[ -d /run/systemd/system ]] || { echo 'A running systemd is required.' >&2; exit 1; }
-apt-get update -q
+donino_apt update -q
 packages=(python3 python3-venv python3-pip openssl ca-certificates openssh-client)
 [[ "$role" != foreign ]] || packages+=(openssh-server)
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${packages[@]}"
+donino_apt install -y -q --no-install-recommends "${packages[@]}"
+python3 -c 'import sys; assert sys.version_info >= (3,10), "Python 3.10+ required"'
 if [[ "$role" == foreign ]]; then
   ssh-keygen -A
   /usr/sbin/sshd -t

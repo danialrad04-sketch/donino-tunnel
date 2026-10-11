@@ -6,6 +6,7 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 from .config import endpoint
 
@@ -52,8 +53,19 @@ def check(node):
         if total < 1500*1024*1024: raise ValueError('BrowserLink requires at least 1.5 GiB host RAM')
         flag = Path('/proc/sys/kernel/unprivileged_userns_clone')
         if flag.exists() and flag.read_text().strip() != '1': raise ValueError('Chromium sandbox requires enabled unprivileged user namespaces')
-        namespaces = subprocess.run(['runuser','-u','donino-link','--','unshare','--user','--map-root-user','--net','true'],capture_output=True,timeout=10)
-        if namespaces.returncode: raise ValueError('Chromium namespace sandbox is blocked by the host kernel/AppArmor policy; fix that policy before selecting BrowserLink')
+        config=json.loads((node/'transports/browser-wss.json').read_text())
+        browser=config.get('chromium','/usr/bin/chromium')
+        import pwd
+        account=pwd.getpwnam('donino-link')
+        with tempfile.TemporaryDirectory(prefix='browser-preflight-',dir='/var/lib/donino-link') as profile:
+            os.chown(profile,account.pw_uid,account.pw_gid)
+            # Test the actual executable: Ubuntu may permit Chrome namespaces
+            # through a scoped AppArmor profile while correctly denying unshare.
+            launch=subprocess.run(['runuser','-u','donino-link','--',browser,'--headless=new','--disable-setuid-sandbox',
+                '--disable-dev-shm-usage','--no-first-run','--no-default-browser-check',
+                '--user-data-dir='+profile,'--dump-dom','about:blank'],capture_output=True,timeout=20)
+            if launch.returncode or b'<html' not in launch.stdout.lower():
+                raise ValueError('Native Chromium sandbox startup failed before activation: '+launch.stderr.decode(errors='replace')[-1200:])
     if install['role'] == 'foreign':
         config = json.loads((node/'node.json').read_text())
         for name, target in config.get('targets', {}).items():

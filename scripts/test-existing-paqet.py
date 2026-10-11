@@ -12,7 +12,7 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
     units={};files={}
     for node in ('foreign','iran'):
         peer=ips['iran' if node=='foreign' else 'foreign']
-        execute(node,'apt-get','install','-y','libpcap0.8')
+        execute(node,'bash','-Eeuo','pipefail','-c','source /source/donino_link/resources/platform.sh; donino_platform; donino_apt install -y "$(donino_package libpcap0.8t64 libpcap0.8)"')
         meta=json.loads(execute(node,'/opt/donino-link/current/venv/bin/python','/source/tests/systemd/external_paqet.py',node,peer))
         units[node]=meta['unit'];files[node]=meta['file']
         execute(node,'systemctl','daemon-reload')

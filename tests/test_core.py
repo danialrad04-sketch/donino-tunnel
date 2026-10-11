@@ -101,6 +101,20 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         await self.gateway.check(p);await self.gateway.check(p)
         self.assertFalse(p.healthy)
 
+    async def test_probe_deadline_closes_an_unresponsive_peer(self):
+        disconnected=asyncio.Event()
+        async def silent(reader,writer):
+            try:
+                await reader.readline()
+                await reader.read()
+                disconnected.set()
+            finally:
+                writer.close();await writer.wait_closed()
+        address=await self.listen(silent)
+        with self.assertRaises(asyncio.TimeoutError):
+            await probe(address,KEY,.05)
+        await asyncio.wait_for(disconnected.wait(),1)
+
     async def test_hysteresis_and_recovery(self):
         address=await self.health();p=self.gateway.paths['primary'];p.config['health']=address
         await self.gateway.check(p);self.assertFalse(p.healthy)

@@ -22,6 +22,7 @@ from donino_link.plan import make_plan
 BASE=Path(__file__).resolve().parent.parent
 PASSWORD='systemd-fixture-password-123'
 PREFIX='donino-ci-'+str(os.getpid())
+BASE_IMAGE=os.environ.get('DONINO_TEST_BASE_IMAGE','debian:12')
 
 def run(*args, data=None):
     r=subprocess.run(args,input=data,capture_output=True,timeout=1800)
@@ -32,13 +33,13 @@ def run(*args, data=None):
 def execute(node,*args,data=None):return run('docker','exec','-i',PREFIX+'-'+node,*args,data=data)
 
 def main():
-    report={'scope':'Two disposable Debian 12 systemd containers, private Docker bridge; not a real Iran WAN','results':[]}
+    report={'scope':'Two disposable '+BASE_IMAGE+' systemd containers, private Docker bridge; not a real Iran WAN','base_image':BASE_IMAGE,'results':[]}
     with tempfile.TemporaryDirectory(prefix='donino-systemd-') as tmp:
         work=Path(tmp)
         try:
             try:
-                run('docker','build','-t',PREFIX,str(BASE/'tests/systemd'))
-                report['ci_base_image_source']='docker.io/library/debian:12'
+                run('docker','build','--build-arg','BASE_IMAGE='+BASE_IMAGE,'-f',str(BASE/'tests/systemd/Dockerfile'),'-t',PREFIX,str(BASE))
+                report['ci_base_image_source']='docker.io/library/'+BASE_IMAGE
             except RuntimeError as error:
                 detail=str(error)
                 hub_unavailable='429 Too Many Requests' in detail or ('https://auth.docker.io/token' in detail and '504 Gateway Timeout' in detail)
@@ -46,8 +47,8 @@ def main():
                 # Google's documented cache of public Docker Hub images. Only
                 # the disposable CI base changes; production setup uses apt.
                 # https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
-                run('docker','build','--build-arg','BASE_IMAGE=mirror.gcr.io/library/debian:12','-t',PREFIX,str(BASE/'tests/systemd'))
-                report['ci_base_image_source']='mirror.gcr.io/library/debian:12 (Docker Hub rate-limit/auth-timeout fallback)'
+                run('docker','build','--build-arg','BASE_IMAGE=mirror.gcr.io/library/'+BASE_IMAGE,'-f',str(BASE/'tests/systemd/Dockerfile'),'-t',PREFIX,str(BASE))
+                report['ci_base_image_source']='mirror.gcr.io/library/'+BASE_IMAGE+' (Docker Hub rate-limit/auth-timeout fallback)'
             for node in ['iran','foreign']:
                 run('docker','run','-d','--name',PREFIX+'-'+node,'--privileged','--cgroupns=host','--tmpfs','/run','--tmpfs','/tmp','-v','/sys/fs/cgroup:/sys/fs/cgroup:rw','-v',str(BASE)+':/source:ro','-v',str(work)+':/work',PREFIX)
                 for _ in range(60):

@@ -75,19 +75,22 @@ async def start_responder(listen, key, targets=None):
 async def probe(address, key, timeout):
     writer = None
     start = time.monotonic()
+    async def exchange():
+        nonlocal writer
+        reader,writer = await asyncio.open_connection(*endpoint(address), limit=8192)
+        nonce = secrets.token_hex(32)
+        writer.write((json.dumps({"nonce": nonce, "auth": mac(key, "probe:" + nonce)}) + "\n").encode())
+        await writer.drain()
+        packet = json.loads(await reader.readline())
+        if not hmac.compare_digest(mac(key, packet["body"]), packet["auth"]):
+            raise ValueError("health signature mismatch")
+        body = json.loads(packet["body"])
+        if body["nonce"] != nonce:
+            raise ValueError("stale health response")
+        return (time.monotonic()-start)*1000, body["stats"]
     try:
-        async with asyncio.timeout(timeout):
-            reader,writer = await asyncio.open_connection(*endpoint(address), limit=8192)
-            nonce = secrets.token_hex(32)
-            writer.write((json.dumps({"nonce": nonce, "auth": mac(key, "probe:" + nonce)}) + "\n").encode())
-            await writer.drain()
-            packet = json.loads(await reader.readline())
-            if not hmac.compare_digest(mac(key, packet["body"]), packet["auth"]):
-                raise ValueError("health signature mismatch")
-            body = json.loads(packet["body"])
-            if body["nonce"] != nonce:
-                raise ValueError("stale health response")
-            return (time.monotonic()-start)*1000, body["stats"]
+        # One deadline covers connect, write and authenticated response on 3.10+.
+        return await asyncio.wait_for(exchange(),timeout)
     finally:
         if writer:
             writer.close()

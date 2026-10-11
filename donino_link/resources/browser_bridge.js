@@ -1,11 +1,11 @@
 'use strict';
 // Native browser owns TLS and WebSocket. This IPC bridge never emits tunnel
 // payload over CDP's debugging socket: Chromium uses anonymous inherited pipes.
-const {spawn} = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const readline = require('node:readline');
+const {spawn} = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const readline = require('readline');
 let chrome, profile, cdpBuffer='', sequence=0, session, initialized=false;
 const pending=new Map();
 const emit = value => process.stdout.write(JSON.stringify(value)+'\n');
@@ -116,7 +116,14 @@ function shutdown(code=0) {
   if(stopping)return;stopping=true;
   if(chrome)chrome.kill('SIGTERM');
   for(const waiter of pending.values())clearTimeout(waiter.timer);
-  setTimeout(()=>{if(chrome)chrome.kill('SIGKILL');if(profile)fs.rmSync(profile,{recursive:true,force:true});process.exit(code);},300).unref();
+  setTimeout(()=>{
+    if(chrome)chrome.kill('SIGKILL');
+    if(profile) {
+      if(fs.rmSync)fs.rmSync(profile,{recursive:true,force:true});
+      else fs.rmdirSync(profile,{recursive:true}); // Ubuntu 22.04's Node 12.
+    }
+    process.exit(code);
+  },300).unref();
 }
 process.on('SIGTERM',()=>shutdown());process.on('SIGINT',()=>shutdown());
 const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});

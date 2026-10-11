@@ -8,7 +8,7 @@ jobs:
     timeout-minutes: 8
     strategy:
       matrix:
-        python: ['3.11', '3.12', '3.13']
+        python: ['3.10', '3.11', '3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,6 +18,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - run: bash -n scripts/install-node.sh scripts/rollback.sh scripts/expose-panel.sh
       - run: bash -n donino_link/resources/install-node.sh donino_link/resources/rollback.sh scripts/setup.sh
+      - run: bash -n donino_link/resources/platform.sh
       - run: cmp pyproject.toml donino_link/resources/pyproject.toml
       - run: cmp scripts/install-node.sh donino_link/resources/install-node.sh
       - run: cmp scripts/rollback.sh donino_link/resources/rollback.sh
@@ -69,9 +70,30 @@ jobs:
         with:
           name: panel-ui-results
           path: ui-results/
+  native-browser-policy:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ['ubuntu-22.04', 'ubuntu-24.04']
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo --preserve-env=GITHUB_ACTIONS bash scripts/test-native-browser.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-browser-policy-${{ matrix.runner }}
+          path: native-browser-results.json
   provision-integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['debian:12', 'debian:13', 'ubuntu:22.04', 'ubuntu:22.10', 'ubuntu:23.04', 'ubuntu:23.10', 'ubuntu:24.04', 'ubuntu:24.10', 'ubuntu:25.04', 'ubuntu:25.10', 'ubuntu:26.04']
+    env:
+      DONINO_TEST_BASE_IMAGE: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -82,7 +104,7 @@ jobs:
           node-version: '22'
       - run: pip install .
       - run: npm install --no-save playwright@1.62.1
-      # The runner host is Ubuntu; containers represent Debian nodes. Permit
+      # The runner host is Ubuntu; containers represent several OS versions. Permit
       # unprivileged user namespaces on this disposable CI host so Ubuntu's
       # host-wide AppArmor restriction does not override Debian's sandbox policy.
       # Chromium namespace and seccomp sandboxes stay enabled.
@@ -91,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: provision-systemd-results
+          name: provision-systemd-results-${{ strategy.job-index }}
           path: |
             provision-results.json
             provision-iran.log
