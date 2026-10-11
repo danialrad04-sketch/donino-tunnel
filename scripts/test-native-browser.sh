@@ -27,5 +27,11 @@ with tempfile.TemporaryDirectory() as tmp:
     (node/'transports/browser-wss.json').write_text(json.dumps({'chromium':sys.argv[1]}))
     print(check(node))
 PY
-runuser -u donino-link -- "$python" "$source_dir/scripts/test-browser.py" --chromium "$DONINO_CHROMIUM" --output /var/lib/donino-link/browser-results.json
+install -m 0644 "$source_dir/scripts/test-browser.py" /opt/donino-link/native-browser-test/test-browser.py
+systemd-run --unit=donino-browser-ci --wait --pipe --collect \
+  --property=User=donino-link --property=Group=donino-link --property=NoNewPrivileges=true \
+  --property=CapabilityBoundingSet= --property=AmbientCapabilities= \
+  --property=ProtectSystem=strict --property=ProtectHome=true --property=PrivateTmp=true \
+  --property=ReadWritePaths=/var/lib/donino-link --property=MemoryMax=1536M \
+  "$python" /opt/donino-link/native-browser-test/test-browser.py --chromium "$DONINO_CHROMIUM" --output /var/lib/donino-link/browser-results.json
 cp /var/lib/donino-link/browser-results.json "$source_dir/native-browser-results.json"

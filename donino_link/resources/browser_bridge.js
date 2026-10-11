@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 let chrome, profile, cdpBuffer='', sequence=0, session, initialized=false;
+const sandboxCheck=process.argv[2]==='--sandbox-check';
 const pending=new Map();
 const emit = value => process.stdout.write(JSON.stringify(value)+'\n');
 function cdp(method, params={}, scoped=true) {
@@ -33,7 +34,7 @@ async function initialize(config) {
     if (process.getuid()!==0 || process.env.DONINO_TEST!=='1') throw Error('test sandbox exception forbidden');
     flags.push('--no-sandbox');
   }
-  chrome=spawn(config.chromium||'/usr/bin/chromium',flags,{stdio:['ignore','ignore','pipe','pipe','pipe'],
+  chrome=spawn(config.chromium||process.env.DONINO_CHROMIUM||'/usr/bin/chromium',flags,{stdio:['ignore','ignore','pipe','pipe','pipe'],
     env:{...process.env,XDG_CONFIG_HOME:path.join(profile,'config'),XDG_CACHE_HOME:path.join(profile,'cache')}});
   chrome.on('error',()=>shutdown(1));
   let startupDiagnostics='';
@@ -60,6 +61,11 @@ async function initialize(config) {
   const target=await cdp('Target.createTarget',{url:'about:blank'},false);
   session=(await cdp('Target.attachToTarget',{targetId:target.targetId,flatten:true},false)).sessionId;
   await cdp('Runtime.enable');await cdp('Page.enable');await cdp('Network.enable');
+  if(sandboxCheck) {
+    const result=await cdp('Runtime.evaluate',{expression:'document.readyState',returnByValue:true});
+    if(result.result.value!=='complete')throw Error('sandbox renderer did not initialize');
+    emit({sandbox_startup:true});shutdown(0);return;
+  }
   await cdp('Runtime.addBinding',{name:'donino_bridge'});
   const cookie=await cdp('Network.setCookie',{name:'donino_session',value:config.token,url:config.origin+'/',secure:true,httpOnly:true,sameSite:'Strict'});
   if(!cookie.success) throw Error('cookie rejected');
@@ -124,13 +130,17 @@ function shutdown(code=0) {
       else fs.rmdirSync(profile,{recursive:true}); // Ubuntu 22.04's Node 12.
     }
     process.exit(code);
-  },300).unref();
+  },300);
 }
 process.on('SIGTERM',()=>shutdown());process.on('SIGINT',()=>shutdown());
-const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});
-let chain=Promise.resolve();
-lines.on('line',line=>{
-  if(line.length>131072)return shutdown(1);
-  chain=chain.then(()=>command(JSON.parse(line))).catch(error=>{process.stderr.write('BrowserLink: '+error.message+'\n');shutdown(1);});
-});
-lines.on('close',()=>shutdown());
+if(sandboxCheck) {
+  initialize({}).catch(error=>{process.stderr.write('BrowserLink sandbox: '+error.message+'\n');shutdown(1);});
+} else {
+  const lines=readline.createInterface({input:process.stdin,crlfDelay:Infinity});
+  let chain=Promise.resolve();
+  lines.on('line',line=>{
+    if(line.length>131072)return shutdown(1);
+    chain=chain.then(()=>command(JSON.parse(line))).catch(error=>{process.stderr.write('BrowserLink: '+error.message+'\n');shutdown(1);});
+  });
+  lines.on('close',()=>shutdown());
+}
