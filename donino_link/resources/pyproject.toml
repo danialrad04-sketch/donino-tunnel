@@ -16,4 +16,4 @@ donino-link = "donino_link.cli:main"
 packages = ["donino_link"]
 
 [tool.setuptools.package-data]
-donino_link = ["web/*", "engines.json", "resources/*"]
+donino_link = ["web/*", "engines.json", "resources/*", "resources/wheelhouse/*"]

@@ -67,9 +67,8 @@ fi
 stage=$(mktemp -d /var/tmp/donino-setup-XXXXXX)
 trap 'rm -rf -- "$stage"' EXIT
 cp -a "$source_dir/donino_link" "$source_dir/pyproject.toml" "$stage/"
-python3 -m venv "$stage/venv"
-install -d -m 0700 /var/cache/donino-link/pip
-"$stage/venv/bin/pip" --cache-dir /var/cache/donino-link/pip install --disable-pip-version-check "$stage"
+source "$source_dir/donino_link/resources/python-runtime.sh"
+donino_python_runtime "$stage"
 "$stage/venv/bin/donino-link" init-node --role "$role" --address "$address" "${forward[@]}"
 services=(donino-link.service)
 if [[ "$role" == iran ]]; then services+=(donino-control.service);else services+=(donino-foreign-agent.service ssh.service);fi

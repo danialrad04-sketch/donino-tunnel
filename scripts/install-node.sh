@@ -35,9 +35,8 @@ install -d -m 0750 -o root -g donino-link /etc/donino-link /opt/donino-link /opt
 install -d -m 0700 -o donino-link -g donino-link /var/lib/donino-link
 install -d -m 0750 -o root -g donino-link "$release_dir"
 cp -a "$source_dir/donino_link" "$source_dir/scripts" "$source_dir/pyproject.toml" "$source_dir/node" "$release_dir/"
-python3 -m venv "$release_dir/venv"
-install -d -m 0700 /var/cache/donino-link/pip
-"$release_dir/venv/bin/pip" --cache-dir /var/cache/donino-link/pip install --disable-pip-version-check "$release_dir"
+source "$release_dir/donino_link/resources/python-runtime.sh"
+donino_python_runtime "$release_dir"
 if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("browser") else 1)' "$release_dir/node/install.json"; then
   donino_browser "$release_dir/venv/bin/python"
   "$release_dir/venv/bin/python" - "$release_dir/node/transports/browser-wss.json" "$DONINO_CHROMIUM" <<'PYBROWSER'

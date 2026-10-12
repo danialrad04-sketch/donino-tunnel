@@ -1,0 +1,92 @@
+[
+  {
+    "wheel": "aiohappyeyeballs-2.7.1-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/71/43/1947f06babed6b3f1d7f38b0c767f52df66bfb2bc10b468c4a7de9eceff2/aiohappyeyeballs-2.7.1-py3-none-any.whl",
+    "source_sha256": "9243213661e29250eb41368e5daa826fc017156c3b8a11440826b2e3ed376472",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "aiohttp-3.14.4-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/2b/27/5e1f8446545be98e9416af59c396b1ed1f9f3294afb0a40ee3a709889273/aiohttp-3.14.4-py3-none-any.whl",
+    "source_sha256": "5c6758ba62aea282c537179cfc8474a90f2b5f7b089cc5ff66d8920d86a9bfdd",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "aiosignal-1.4.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl",
+    "source_sha256": "053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "async_timeout-5.0.1-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl",
+    "source_sha256": "39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "attrs-26.1.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl",
+    "source_sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "frozenlist-1.8.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/9a/9a/e35b4a917281c0b8419d4207f4334c8e8c5dbf4f3f5f9ada73958d937dcc/frozenlist-1.8.0-py3-none-any.whl",
+    "source_sha256": "0c18a16eab41e82c295618a77502e17b195883241c563b00f0aa5106fc4eaa0d",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "idna-3.19-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/57/b0/0e52c878c53f245edd3a11020f20979b3f490f245af532c7cae3027754b5/idna-3.19-py3-none-any.whl",
+    "source_sha256": "815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "multidict-6.7.1-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl",
+    "source_sha256": "55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "packaging-26.2-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl",
+    "source_sha256": "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "propcache-0.5.2-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/3a/ed/1cdcab6ba3d6ab7feca11fc14f0eeea80755bb53ef4e892079f31b10a25f/propcache-0.5.2-py3-none-any.whl",
+    "source_sha256": "be1ddfcbb376e3de5d2e2db1d58d6d67463e6b4f9f040c000de8e300295465fe",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "pyyaml-6.0.3-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz",
+    "source_sha256": "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
+    "build": "PYYAML_FORCE_LIBYAML=0 python setup.py bdist_wheel (setuptools 84.0.0, wheel 0.48.0)"
+  },
+  {
+    "wheel": "setuptools-84.0.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl",
+    "source_sha256": "51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "typing_extensions-4.16.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+    "source_sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "wheel-0.48.0-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/2e/29/69cfbb602cd91690c55d38ba9fe53e6a7e76a6fa647bf38f19c138d25449/wheel-0.48.0-py3-none-any.whl",
+    "source_sha256": "3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab",
+    "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "yarl-1.25.1-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/54/22/318c7980066769c6bcd9221ed2248294f5698811da099013098c670565ed/yarl-1.25.1-py3-none-any.whl",
+    "source_sha256": "681c758b0490f9e96b78e5fa8e8dc6e648e9185bb6eaebe73183c33ea0c445f3",
+    "build": "upstream pure Python wheel"
+  }
+]
