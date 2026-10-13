@@ -106,7 +106,11 @@ def verify(api,foreign_api,execute,ips,profile,login,foreign_login,base,foreign_
     print(ui.stdout)
     # Explicit fixture cleanup; production discovery never runs this.
     for node in units:
-        execute(node,'systemctl','disable','--now',units[node])
+        # Older systemd versions can cancel the stop job when disable --now
+        # reloads the unit graph. Finish stopping before disabling the fixture.
+        execute(node,'systemctl','stop',units[node])
+        assert execute(node,'systemctl','show','--value','--property=MainPID',units[node]).strip()=='0'
+        execute(node,'systemctl','disable',units[node])
         execute(node,'rm','/etc/systemd/system/'+units[node]);execute(node,'systemctl','daemon-reload')
     execute('foreign','/opt/donino-link/current/venv/bin/python','-m','donino_link.raw_rules','remove','--peer',ips['iran'],'--port','33535')
     return {'independent_yaml_custom_units_detected_on_both_roles':True,'passive_scan_and_adoption_preserve_pid_config_firewall':True,
