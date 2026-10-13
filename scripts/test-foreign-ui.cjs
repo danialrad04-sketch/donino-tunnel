@@ -12,7 +12,7 @@ async function main(){
     await outside.goto(process.env.DONINO_FOREIGN_URL);
     await outside.locator('#password').fill('systemd-fixture-password-123');
     await outside.locator('#login-form button').click();
-    await outside.locator('#foreign-node').waitFor({state:'visible'});
+    await outside.evaluate(()=>navigateWorkspace('#foreign-node'));await outside.locator('#foreign-node').waitFor({state:'visible'});
     if(await outside.locator('#setup').isVisible())throw Error('foreign must have its own role panel');
     await outside.waitForFunction(()=>document.querySelectorAll('.path-card').length===8&&document.querySelectorAll('.foreign-unit').length>=8);
     if(process.env.DONINO_EXPECT_UNKNOWN==='1'){
@@ -24,13 +24,13 @@ async function main(){
       return;
     }
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='donino-continuum')?.textContent.includes('بازیابی موفق'));
-    await outside.locator('#paqet-manager').waitFor({state:'visible'});
+    await outside.evaluate(()=>navigateWorkspace('#paqet-manager'));await outside.locator('#paqet-manager').waitFor({state:'visible'});
     await outside.locator('#paqet-actions').getByRole('button',{name:'نسخهٔ هسته',exact:true}).click();
     await outside.waitForFunction(()=>document.querySelector('#paqet-output').textContent.includes('alpha.21'),{},{timeout:30000});
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='paqet')?.textContent.includes('UDP: رفت‌وبرگشت معتبر'));
-    await outside.locator('#foreign-test').click();
+    await outside.evaluate(()=>navigateWorkspace('#targets'));await outside.locator('#foreign-test').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-action-history').textContent.includes('موفق'),{},{timeout:45000});
-    const quic=outside.locator('.foreign-unit').filter({hasText:'donino-link-frp-quic.service'});
+    await outside.evaluate(()=>navigateWorkspace('#foreign-node'));const quic=outside.locator('.foreign-unit').filter({hasText:'donino-link-frp-quic.service'});
     await quic.getByRole('button',{name:'توقف',exact:true}).click();
     await outside.waitForFunction(()=>[...document.querySelectorAll('.foreign-unit')].find(e=>e.textContent.includes('donino-link-frp-quic.service'))?.querySelector('.badge').textContent==='inactive',{},{timeout:45000});
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='frp-quic')?.querySelector('.path-status').textContent!=='سالم');
@@ -38,7 +38,7 @@ async function main(){
     await outside.waitForFunction(()=>[...document.querySelectorAll('.path-status')].length===8&&[...document.querySelectorAll('.path-status')].every(e=>e.textContent==='سالم'),{},{timeout:60000});
     const panelUnit=outside.locator('.foreign-unit').filter({hasText:/donino-link\.service/});
     if(!await panelUnit.getByRole('button',{name:'توقف',exact:true}).isDisabled())throw Error('panel must not stop itself');
-    await outside.locator('#foreign-new-code').click();
+    await outside.evaluate(()=>navigateWorkspace('#pairing'));await outside.locator('#foreign-new-code').click();
     await outside.waitForFunction(()=>document.querySelector('#foreign-code-value').value.startsWith('donino1.'));
     // Do not publish a still-valid fixture pairing code in screenshots/logs.
     await outside.locator('#foreign-code-value').evaluate(e=>e.value='');
@@ -58,17 +58,17 @@ async function main(){
     await iran.goto(process.env.DONINO_IRAN_URL);
     await iran.locator('#password').fill('systemd-fixture-password-123');await iran.locator('#login-form button').click();
     await iran.waitForFunction(()=>[...document.querySelectorAll('.path-card')].find(e=>e.querySelector('h3').textContent==='donino-continuum')?.textContent.includes('بازیابی موفق'));
-    await iran.locator('#setup').waitFor({state:'visible'});await iran.locator('#setup-details summary').first().click();
-    await iran.locator('#adaptive').click();
+    await iran.evaluate(()=>navigateWorkspace('#resilience'));
+    await iran.evaluate(()=>navigateWorkspace('#resilience'));await iran.locator('#adaptive').click();
     await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='true');
     await iran.reload();
     await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='true'&&document.querySelector('#path-list').textContent.includes('هزینهٔ مسیر'));
-    await iran.locator('#adaptive').click();
+    await iran.evaluate(()=>navigateWorkspace('#resilience'));await iran.locator('#adaptive').click();
     await iran.waitForFunction(()=>document.querySelector('#adaptive').getAttribute('aria-pressed')==='false');
-    await iran.locator('#setup-details summary').first().click();
+    await iran.evaluate(()=>navigateWorkspace('#pairing'));
     await iran.waitForFunction(()=>document.querySelector('#setup-profile').options.length>=2&&document.querySelector('#setup-iran').value.length>0);
     if(await iran.locator('#foreign-node').isVisible()||!await iran.locator('#connection-code').isVisible()||await iran.locator('#connection-pin').isVisible())throw Error('wrong Iran pairing flow');
-    await iran.locator('#paqet-manager').waitFor({state:'visible'});
+    await iran.evaluate(()=>navigateWorkspace('#paqet-manager'));await iran.locator('#paqet-manager').waitFor({state:'visible'});
     await iran.locator('#paqet-actions').getByRole('button',{name:'آزمون امضاشدهٔ UDP',exact:true}).click();
     await iran.waitForFunction(()=>document.querySelector('#paqet-output').textContent.includes('UDP سالم'));
     await iran.locator('#paqet-edit').click();

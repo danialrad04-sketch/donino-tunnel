@@ -1,4 +1,5 @@
 """Unprivileged foreign monitor: service state and fresh Iran probes differ."""
+from . import __version__
 from .runtime import continuum_status
 import asyncio
 import contextlib
@@ -88,7 +89,7 @@ class ForeignMonitor:
                 local=next((u for u in self.units if u['unit']=='donino-link-donino-continuum.service' and u['active']),None)
                 row['continuum']=continuum_status('foreign',local['pid']) if local else None
             rows.append(row)
-        return {'version':'0.1.0','role':'foreign','time':time.time(),'uptime':time.time()-self.started,'paused':False,'preferred':None,
+        return {'version':__version__,'role':'foreign','time':time.time(),'uptime':time.time()-self.started,'paused':False,'preferred':None,
             'selected':None,'active':self.metrics_data['active'] if self.metrics_data else None,
             'accepted':self.metrics_data['accepted'] if self.metrics_data else None,'rejected':None,'route_changes':None,
             'host':host_stats(),'paths':rows,'services':[],'events':self.store.events(),'units':self.units,'targets':self.targets,

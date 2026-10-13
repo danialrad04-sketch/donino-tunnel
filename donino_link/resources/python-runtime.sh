@@ -11,7 +11,7 @@ donino_python_runtime() {
   local options=(--isolated --disable-pip-version-check --no-cache-dir --no-index --find-links "$wheels")
   echo 'Installing embedded Python dependencies offline (no PyPI access).'
   "$python" -m pip install "${options[@]}" 'setuptools==84.0.0' 'wheel==0.48.0' 'packaging==26.2' || return 1
-  "$python" -m pip install "${options[@]}" 'aiohttp==3.14.4' 'PyYAML==6.0.3' || return 1
+  "$python" -m pip install "${options[@]}" 'aiohttp==3.14.4' 'PyYAML==6.0.3' 'tomli==2.4.1' || return 1
   "$python" -m pip install "${options[@]}" --no-build-isolation --no-deps "$source_dir" || return 1
   "$python" -m pip --isolated check || return 1
 }

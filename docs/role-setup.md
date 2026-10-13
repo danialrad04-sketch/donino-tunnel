@@ -4,7 +4,7 @@
 
 ## شروع
 
-سرورها: Debian 12/13 یا Ubuntu 22.04 تا 26.04، amd64/arm64، systemd، دسترسی root و مخازن apt/PyPI/GitHub. BrowserLink روی ایران به اجازهٔ واقعی namespace و sandbox کرنل نیاز دارد؛ نصب کامل هشت حامل حداقل ۱٫۵ GiB RAM می‌خواهد و برای بار واقعی باید ظرفیت جداگانه سنجیده شود.
+سرورها: Debian 12/13 یا Ubuntu 22.04 تا 26.04، amd64/arm64، systemd، دسترسی root و مخازن apt/GitHub. BrowserLink روی ایران به اجازهٔ واقعی namespace و sandbox کرنل نیاز دارد؛ نصب کامل هشت حامل حداقل ۱٫۵ GiB RAM می‌خواهد و برای بار واقعی باید ظرفیت جداگانه سنجیده شود.
 
 در ترمینال root هر سرور، نصب را با یک فرمان شروع کن:
 
@@ -20,7 +20,7 @@ curl -fL --retry 3 https://raw.githubusercontent.com/danialrad04-sketch/donino-t
 sudo bash install-donino.sh
 ```
 
-همهٔ گزینه‌های نصب، از جمله `--role`، `--address` و `--upgrade` برای این فایل هم قابل استفاده‌اند. دانلود apt/PyPI و باینری‌های حامل انتخاب‌شده همچنان به اینترنت نیاز دارد. checksum داخلی، خرابی فایل همراه را بررسی می‌کند؛ فایل را از همین مخزن دریافت کن.
+همهٔ گزینه‌های نصب، از جمله `--role`، `--address` و `--upgrade` برای این فایل هم قابل استفاده‌اند. وابستگی‌های Python داخل فایل هستند و به PyPI نیاز ندارند؛ دانلود apt و باینری‌های حامل انتخاب‌شده همچنان به اینترنت نیاز دارد. checksum داخلی، خرابی فایل همراه را بررسی می‌کند؛ فایل را از همین مخزن دریافت کن.
 
 روش جایگزین برای کار با سورس: مخزن را clone کن یا پوشهٔ استخراج‌شده از Download ZIP گیت‌هاب را به هر سرور انتقال بده. در پوشهٔ پروژه، روی **هر سرور**:
 
@@ -117,7 +117,19 @@ sudo bash scripts/setup.sh --role foreign --address FOREIGN_IP
 
 ## ارتقا و خطایابی
 
-با نسخهٔ جدید پوشهٔ پروژه روی همان سرور:
+روی خارج و سپس ایران، در ترمینال root:
+
+```bash
+curl -fL --retry 3 --connect-timeout 15 https://raw.githubusercontent.com/danialrad04-sketch/donino-tunnel/main/install-donino.sh -o install-donino.sh && bash install-donino.sh --upgrade
+```
+
+نصب‌کنندهٔ ۰.۲.۰، پنل و runtime تانل‌های مدیریت‌شده را به‌روز می‌کند. Paqet و سرویس‌های مستقل فقط مشاهده می‌شوند و توسط این ارتقا restart یا بازنویسی نمی‌شوند. سرویس‌های مدیریت‌شدهٔ خود Donino از نو شروع می‌شوند و اتصال‌های جاری آن‌ها ممکن است قطع شوند. هر دو طرف باید نسخهٔ جدید داشته باشند؛ پس از ارتقا پنل را reload کن.
+
+```bash
+/opt/donino-link/current/venv/bin/python -c 'from donino_link import __version__; print(__version__)'
+```
+
+خروجی نسخه باید `0.2.0` باشد. روش جایگزین با نسخهٔ جدید پوشهٔ پروژه روی همان سرور:
 
 ```bash
 sudo bash scripts/setup.sh --upgrade

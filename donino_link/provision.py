@@ -20,7 +20,7 @@ import threading
 import time
 from pathlib import Path
 from aiohttp import web,ClientError
-from .config import atomic_json, endpoint, load_config
+from .config import atomic_json, endpoint, load_config, loopback
 from .deploy import build_payload
 from .plan import make_plan, TRANSPORTS, EXPERIMENTAL
 
@@ -266,6 +266,8 @@ class Worker:
                 *(['-o','AddressFamily='+profile['family']] if profile.get('family') else []),'root@'+profile['host']]
 
     def state(self):
+        from .adapters import paqet_overview
+        inventory=self.inventory.scan()
         from .paqet import capabilities, status
         with self.lock:
             jobs = [read_json(p) for p in (self.root/'jobs').glob('*/job.json')]
@@ -275,7 +277,7 @@ class Worker:
                 'transports': [{'id': t, 'experimental': t in EXPERIMENTAL} for t in TRANSPORTS],
                 'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy,
                 'iran_address':read_json(self.live,{}).get('public_address'),
-                'inventory':self.inventory.scan(),'remote_inventory':self.remote_inventory,'paqet_capabilities':capabilities(),'paqet':status(self.live.parent), 'active_spec':self.active_spec()}
+                'inventory':inventory,'remote_inventory':self.remote_inventory,'paqet_capabilities':capabilities(),'paqet':paqet_overview(status(self.live.parent),inventory), 'active_spec':self.active_spec()}
 
     def active_spec(self):
         from .paqet import safe_options
@@ -329,6 +331,9 @@ class Worker:
                 from .peer import peer_request
                 from .import_health import test,key_id
                 row=await asyncio.to_thread(self.inventory.select,body['id'])
+                if row['engine']!='paqet':
+                    return {'tcp_ok':None,'udp_ok':None,'unit':row['unit'],'verification':'process-only','active':row['active'],
+                            'reason':'Process and logs are available; this imported vendor installation has no signed Donino probe route. No configuration was changed.'}
                 profile=self.profile(body.get('profile_id'));remote=await peer_request(profile,'/inventory',{})
                 self.remote_inventory={'time':time.time(),**remote}
                 fingerprint=key_id(row.get('config',{}))
@@ -336,12 +341,15 @@ class Worker:
                 port=endpoint(row['config']['server']['addr'])[1]
                 match=next((r for r in remote['services'] if r.get('engine')=='paqet' and r.get('role')=='server' and r.get('key_id')==fingerprint and str(r.get('config',{}).get('listen',{}).get('addr','')).endswith(':'+str(port))),None)
                 if not match:raise ValueError('no paired foreign Paqet server with the same key was detected')
-                material=await peer_request(profile,'/external-health',{'id':match['id']})
+                targets=list(dict.fromkeys(r['target'] for r in row['config'].get('forward',[]) if r.get('protocol','tcp')=='tcp' and loopback(r['target'])))[:32]
+                material=await peer_request(profile,'/external-health',{'id':match['id'],'targets':targets})
                 result=await asyncio.to_thread(test,row['config'],material)
+                result.setdefault('origin_targets',material.get('targets',[]))
+                result['config_match']=row['config'].get('transport',{}).get('kcp',{}).get('block','aes')==match.get('config',{}).get('transport',{}).get('kcp',{}).get('block','aes')
                 observation={**result,'revision':row.get('revision'),'time':time.time(),'key_id':key_id(row['config']),'server_id':match['id']}
-                self.inventory.health[row['id']]=observation
+                self.inventory.record_health(row['id'],observation)
                 await peer_request(profile,'/external-observation',observation)
-                return observation
+                return {**observation,'unit':row['unit']}
             return await asyncio.to_thread(self.inventory.control,body['id'],op)
         finally:
             with self.lock:self.busy=False
@@ -423,7 +431,7 @@ class Worker:
         return profile
 
     def validate_spec(self, body):
-        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw','paqet_options','paqet_keep_secrets']
+        fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw','paqet_options','paqet_keep_secrets','continuum_options']
         strict_fields(body, fields, ['profile_id', 'iran', 'services', 'transports'])
         profile = self.profile(body['profile_id'])
         if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP services')
@@ -438,6 +446,10 @@ class Worker:
             spec[field] = integer(spec.get(field, default), 1024, 65535, field)
         if spec.get('browser_port') is not None: integer(spec['browser_port'], 1, 65535, 'browser port')
         if type(spec.get('paqet_keep_secrets',False)) is not bool:raise ValueError('Paqet keep secrets must be boolean')
+        if 'continuum_options' in spec:
+            from .continuum import options
+            if 'donino-continuum' not in spec['transports']:raise ValueError('Continuum settings require Continuum')
+            spec['continuum_options']=options(spec['continuum_options'])
         if 'paqet_options' in spec:
             from .paqet import options
             if 'paqet' not in spec['transports']:raise ValueError('Paqet settings require Paqet')
@@ -483,7 +495,7 @@ class Worker:
                 summary = make_plan(directory, spec['iran'], spec['foreign'], spec['services'], spec['transports'],
                                     secrets.token_urlsafe(24), spec.get('experimental', False), spec['base_port'],
                                     spec['carrier_base'], spec['health_port'], spec['paqet_port'], spec.get('browser_port'),
-                                    panel_port=endpoint(live['panel']['listen'])[1],paqet_options=spec.get('paqet_options'))
+                                    panel_port=endpoint(live['panel']['listen'])[1],paqet_options=spec.get('paqet_options'),continuum_options=spec.get('continuum_options'))
                 node = read_json(directory/'iran/node.json'); node['panel'] = live['panel']; node['state_db'] = live['state_db']
                 node['public_address']=spec['iran']
                 atomic_json(directory/'iran/node.json', node)

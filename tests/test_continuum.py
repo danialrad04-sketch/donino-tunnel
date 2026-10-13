@@ -131,6 +131,38 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.iran.stats.bytes_up,sum(map(len,blocks)));self.assertEqual(self.foreign.stats.bytes_up,sum(map(len,blocks)))
         finally:await close_writer(writer)
 
+    async def test_existing_stream_recovers_on_alternate_port_without_reopening_origin(self):
+        from aiohttp import web
+        from donino_link.mux import tls_context
+        primary=next(iter(self.foreign.runner.sites))
+        alternate=web.TCPSite(self.foreign.runner,'127.0.0.1',0,ssl_context=tls_context(self.foreign.config,True))
+        await alternate.start()
+        port=alternate._server.sockets[0].getsockname()[1]
+        self.iran.urls.append(f'wss://127.0.0.1:{port}/continuum')
+        reader,writer=await asyncio.open_connection('127.0.0.1',self.local)
+        try:
+            writer.write(b'before');await writer.drain();self.assertEqual(await reader.readexactly(6),b'before')
+            await primary.stop();await self.abort_lanes()
+            writer.write(b'after'*20000);await writer.drain()
+            self.assertEqual(await asyncio.wait_for(reader.readexactly(100000),5),b'after'*20000)
+            self.assertEqual(self.origin_connections,1);self.assertGreaterEqual(self.iran.endpoint_changes,1)
+            writer.write_eof();self.assertEqual(await asyncio.wait_for(reader.read(),5),b'')
+            await self.wait(lambda:bool(self.received));self.assertEqual(self.received,[b'before'+b'after'*20000])
+        finally:await close_writer(writer)
+
+    async def test_dead_primary_endpoint_falls_back_to_same_authenticated_server(self):
+        dead=ports()[0]
+        self.iran.urls.insert(0,f'wss://127.0.0.1:{dead}/continuum')
+        self.assertEqual(await self.payload(b'fallback'),b'fallback')
+        self.assertGreaterEqual(self.iran.connect_failures,1);self.assertEqual(self.origin_connections,1)
+
+    async def test_retry_backoff_bounds_reconnect_pressure_during_blackout(self):
+        from unittest.mock import AsyncMock,patch
+        session=DurableSession(self.iran)
+        with patch.object(self.iran,'connect',new=AsyncMock(side_effect=ConnectionError('offline'))),patch('donino_link.continuum.random.uniform',return_value=1):
+            await self.iran.maintain(session)
+        self.assertTrue(session.closed);self.assertGreater(self.iran.connect_failures,1);self.assertLessEqual(self.iran.connect_failures,5)
+
     async def loss(self,kind,data):
         original=DurableSession.send;dropped=asyncio.Event()
         async def send(session,k,sid,offset=0,body=b''):

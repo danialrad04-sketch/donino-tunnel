@@ -12,6 +12,7 @@ async function clickAction(page,action){
  return result;
 }
 async function signedHealth(page){
+ await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/health'));
  // An active systemd unit may still be reconnecting after an explicit restart.
  // Repeat only the read-only probe; never restart or edit to make it pass.
  let last;
@@ -34,31 +35,31 @@ async function main(){
    const page=await browser.newPage({viewport:{width:1440,height:1000}});pages[role]=page;page.on('pageerror',e=>errors.push(e.message));
    await page.goto(process.env[role==='iran'?'DONINO_IRAN_URL':'DONINO_FOREIGN_URL']);
    await page.locator('#password').fill('systemd-fixture-password-123');await page.locator('#login-form button').click();
-   await page.locator('#detected-panel').waitFor({state:'visible'});
+   await page.evaluate(()=>navigateWorkspace('#detected-panel'));await page.locator('#detected-panel').waitFor({state:'visible'});
    if(await page.locator('#selected').textContent()!=='پایش نصب موجود'||await page.locator('#active').textContent()!=='—'||await page.locator('#traffic').textContent()!=='—')throw Error('bootstrap falsely reports imported tunnel failure or traffic');
    const unit=role==='iran'?'vendor-edge.service':'vendor-exit.service';
    await page.locator('.detected-service').filter({hasText:unit}).getByRole('button').click();
-   await page.waitForFunction(()=>document.querySelector('#detected-health').textContent.includes('UDP: رفت‌وبرگشت امضاشده سالم'));
-   await page.waitForFunction(()=>document.querySelector('#detected-logs').textContent.length>40&&!document.querySelector('#detected-logs').textContent.includes('در انتظار'));
-   await page.locator('#detected-config-details summary').click();
+   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/health'));await page.waitForFunction(()=>document.querySelector('#detected-health').textContent.includes('UDP: رفت‌وبرگشت امضاشده سالم'));
+   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));await page.waitForFunction(()=>document.querySelector('#detected-logs').textContent.length>40&&!document.querySelector('#detected-logs').textContent.includes('در انتظار'));
+   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/config'));
    const raw=await page.locator('#detected-config').inputValue();if(raw.includes('external-fixture-key-')||raw.includes('external-socks-password')||!raw.includes('[redacted]'))throw Error('secrets leaked into editor');
    if(!await page.locator('#detected-save').isDisabled())throw Error('save needs explicit restart acknowledgement');
    if(await page.locator('#detected-auto-test').isChecked())throw Error('automatic active probing unexpectedly enabled');
-   await page.locator('#detected-panel').screenshot({path:'ui-role-results/existing-'+role+'-desktop.png'});
+   await page.locator('#service-page').screenshot({path:'ui-role-results/existing-'+role+'-desktop.png'});
    await page.setViewportSize({width:390,height:844});
    if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error(role+' mobile overflow');
-   await page.locator('#detected-panel').screenshot({path:'ui-role-results/existing-'+role+'-mobile.png'});
+   await page.locator('#service-page').screenshot({path:'ui-role-results/existing-'+role+'-mobile.png'});
   }
   const page=pages.iran;
   await signedHealth(page);
   // Detaching the existing process must leave it running and gate controls.
-  await page.locator('#detected-manage').click();
+  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/overview'));await page.locator('#detected-manage').click();
   await page.waitForFunction(()=>document.querySelector('#detected-stop').disabled&&document.querySelector('#detected-title').textContent.includes('روشن'));
-  await page.locator('#detected-manage').click();
+  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/overview'));await page.locator('#detected-manage').click();
   await page.waitForFunction(()=>!document.querySelector('#detected-stop').disabled);
   // Edit a local, non-peer setting through the real browser.
   for(const level of ['info','warn']){
-   const beforeRevision=await page.locator('#detected-config').getAttribute('data-revision');
+   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/config'));const beforeRevision=await page.locator('#detected-config').getAttribute('data-revision');
    const cfg=JSON.parse(await page.locator('#detected-config').inputValue());cfg.log.level=level;
    await page.locator('#detected-config').fill(JSON.stringify(cfg,null,2));await page.locator('#detected-confirm').check();
    const saved=await clickAction(page,'edit');
@@ -69,8 +70,8 @@ async function main(){
    await signedHealth(page);
   }
   // Force a new engine event, then observe cursor-based live log updates.
-  const before=await page.locator('#detected-logs').textContent();
-  await page.locator('#detected-restart').click();
+  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));const before=await page.locator('#detected-logs').textContent();
+  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/overview'));await page.locator('#detected-restart').click();await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));
   await page.waitForFunction(previous=>document.querySelector('#detected-logs').textContent!==previous,before,{timeout:20000});
   if(errors.length)throw Error(JSON.stringify(errors));
   console.log(JSON.stringify({existing_roles_detected:true,live_logs:true,fresh_signed_health_visible_both_roles:true,opt_in_detach_keeps_running:true,browser_edit_and_restart:true,two_consecutive_saves_with_current_revision:true,secret_safe_editor:true,mobile_overflow:false,js_errors:errors}));

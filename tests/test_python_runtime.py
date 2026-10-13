@@ -62,7 +62,7 @@ assert yaml.__version__ == '6.0.3'
 build_payload(sys.argv[1], sys.argv[2])
 p = Path(sys.argv[2]) / 'donino_link/resources/wheelhouse'
 assert (p / 'SHA256SUMS').is_file()
-assert len(list(p.glob('*.whl'))) == 15
+assert len(list(p.glob('*.whl'))) == 16
 '''
             probe = subprocess.run([str(python), '-c', code, str(node), str(root / 'next-node')], cwd=root,
                                    env=env, capture_output=True, text=True, timeout=20)

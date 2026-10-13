@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import random
 import secrets
 import signal
 import struct
@@ -29,6 +30,25 @@ MAX_MESSAGE = 32768  # Includes bounded JSON resume snapshots.
 RECOVERY_SECONDS = 15
 MAX_RETIRED = 128
 MAX_OFFSET = (1 << 64) - 1
+
+
+def options(raw=None):
+    raw={} if raw is None else raw
+    if not isinstance(raw,dict) or set(raw)-{'recovery_timeout','retry_max','alternate_ports'}:raise ValueError('invalid Continuum options')
+    result={'recovery_timeout':15,'retry_max':1.5,'alternate_ports':[],**raw}
+    for field,lo,hi in [('recovery_timeout',1,60),('retry_max',.2,5)]:
+        if type(result[field]) not in (int,float) or not lo<=result[field]<=hi:raise ValueError('invalid Continuum '+field)
+    ports=result['alternate_ports']
+    if not isinstance(ports,list) or len(ports)>4 or any(type(p) is not int or not 1024<=p<=65535 for p in ports) or len(ports)!=len(set(ports)):raise ValueError('Continuum needs up to four distinct high alternate ports')
+    return result
+
+
+def valid_url(value):
+    if not isinstance(value,str) or len(value)>512:raise ValueError('invalid Continuum endpoint')
+    url=urlsplit(value)
+    if url.scheme!='wss' or not url.hostname or url.path!='/continuum' or url.query or url.fragment or url.username or url.password:raise ValueError('Continuum requires authenticated wss /continuum endpoints')
+    if url.port is not None and not 1<=url.port<=65535:raise ValueError('invalid Continuum endpoint port')
+    return value
 
 
 class ProtocolError(ValueError):
@@ -554,6 +574,15 @@ class ContinuumNode(MuxNode):
         self.recoveries = self.expired = self.replayed_bytes = 0
         self.stats.details = self.telemetry
         self.pending_links = 0
+        self.retry_max=options({'retry_max':config.get('retry_max',1.5)})['retry_max']
+        self.urls=[]
+        if self.role=='iran':
+            alternates=config.get('alternate_urls',[])
+            if not isinstance(alternates,list) or len(alternates)>4:raise ValueError('too many Continuum endpoints')
+            self.urls=list(dict.fromkeys(valid_url(v) for v in [config['url'],*alternates]))
+        self.endpoint_cursor=0
+        self.connect_attempts=self.connect_failures=self.endpoint_changes=0
+        self.last_endpoint=None
 
     def telemetry(self):
         sessions = [s for s in self.sessions if not s.closed]
@@ -563,7 +592,10 @@ class ContinuumNode(MuxNode):
                 'recoveries': self.recoveries, 'expired': self.expired,
                 'replayed_bytes': self.replayed_bytes,
                 'pending_bytes': sum(f.tx_end - f.tx_ack for s in sessions for f in s.streams.values()),
-                'recovery_seconds': self.recovery_timeout}
+                'recovery_seconds': self.recovery_timeout,
+                'endpoint_count':len(self.urls) if self.role=='iran' else 1+len(self.config.get('alternate_listens',[])),
+                'connect_attempts':self.connect_attempts,'connect_failures':self.connect_failures,
+                'endpoint_changes':self.endpoint_changes,'retry_max_seconds':self.retry_max}
 
     async def server_link(self, request):
         if self.stopping or self.pending_links >= 8:
@@ -629,7 +661,8 @@ class ContinuumNode(MuxNode):
     async def connect(self, session):
         session.epoch += 1  # Monotonic attempts also handle a lost HELLO response.
         value = {'version': PROTOCOL, 'id': session.identity, 'token': session.token, 'epoch': session.epoch, 'resume': session.attempted, 'streams': session.states()}
-        ws = await self.http.ws_connect(self.config['url'], ssl=tls_context(self.config), protocols=[PROTOCOL], compress=0, heartbeat=2, max_msg_size=MAX_MESSAGE + 1)
+        url=self.urls[self.endpoint_cursor%len(self.urls)];self.endpoint_cursor+=1;self.connect_attempts+=1
+        ws = await self.http.ws_connect(url, ssl=tls_context(self.config), protocols=[PROTOCOL], compress=0, heartbeat=2, max_msg_size=MAX_MESSAGE + 1)
         session.attempted = True
         try:
             if ws.protocol != PROTOCOL:
@@ -647,6 +680,8 @@ class ContinuumNode(MuxNode):
             if not isinstance(response, dict) or set(response) != {'version', 'epoch', 'streams'} or response['version'] != PROTOCOL or type(response['epoch']) is not int or response['epoch'] != session.epoch:
                 raise ProtocolError('greeting reply mismatch')
             await session.attach(ws, snapshot(response['streams']))
+            if self.last_endpoint is not None and self.last_endpoint!=url:self.endpoint_changes+=1
+            self.last_endpoint=url
             if value['resume']:
                 self.recoveries += 1
             return ws
@@ -656,6 +691,7 @@ class ContinuumNode(MuxNode):
             raise
 
     async def maintain(self, session):
+        failures=0
         try:
             while not self.stopping and not session.closed:
                 if time.monotonic() - session.disconnected_at >= self.recovery_timeout:
@@ -663,12 +699,16 @@ class ContinuumNode(MuxNode):
                     break
                 try:
                     ws = await asyncio.wait_for(self.connect(session), min(self.connect_timeout, self.recovery_timeout - (time.monotonic() - session.disconnected_at)))
+                    failures=0
                     await session.receive(ws)
                 except ProtocolError as error:
                     self.last_error = str(error)
                     break
                 except (OSError, ClientError, asyncio.TimeoutError):
-                    await asyncio.sleep(.2)
+                    self.connect_failures+=1;failures+=1
+                    remaining=self.recovery_timeout-(time.monotonic()-session.disconnected_at)
+                    delay=min(self.retry_max,.2*2**min(failures-1,6))*random.uniform(.7,1.3)
+                    await asyncio.sleep(max(0,min(delay,remaining)))
         finally:
             await session.close()
 
@@ -697,18 +737,17 @@ class ContinuumNode(MuxNode):
                     self.identities.pop(identity, None)
 
     async def start(self):
-        if self.role == 'iran':
-            url = urlsplit(self.config['url'])
-            if url.scheme != 'wss' or not url.hostname or url.path != '/continuum' or url.query or url.fragment or url.username:
-                raise ValueError('Continuum requires direct wss /continuum URL')
         try:
             if self.role == 'foreign':
                 app = web.Application()
                 app.router.add_get('/continuum', self.server_link)
                 self.runner = web.AppRunner(app)
                 await self.runner.setup()
-                host, port = endpoint(self.config['listen'])
-                await web.TCPSite(self.runner, host, port, ssl_context=tls_context(self.config, True)).start()
+                alternates=self.config.get('alternate_listens',[])
+                if not isinstance(alternates,list) or len(alternates)>4:raise ValueError('too many Continuum listeners')
+                for address in list(dict.fromkeys([self.config['listen'],*alternates])):
+                    host,port=endpoint(address)
+                    await web.TCPSite(self.runner,host,port,ssl_context=tls_context(self.config,True)).start()
                 task = asyncio.create_task(self.reap())
                 self.tasks.add(task)
                 task.add_done_callback(self.tasks.discard)

@@ -57,10 +57,14 @@ def socks(row,command,target):
 
 def test(cfg,material):
     rows=cfg.get('socks5',[])
-    if cfg.get('role')!='client' or not rows:return {'tcp_ok':None,'udp_ok':None,'reason':'No SOCKS5 route is configured; carrier round trip is unverified. No configuration was changed.'}
+    if cfg.get('role')!='client' or not rows:
+        result=forward_diagnostics(cfg,material.get('targets',[]))
+        result.update(tcp_ok=None,udp_ok=None,verification='diagnostics-only',
+                      reason='Existing forwards checked without changing Paqet. No SOCKS5 route reaches the signed responder, so TCP/UDP carrier round trips remain unverified.')
+        return result
     key=material['key'];tcp_address=material['tcp'];udp_address=material['udp']
     if not loopback(tcp_address) or not loopback(udp_address):raise ValueError('paired probe targets must be loopback')
-    result={'tcp_ok':False,'udp_ok':False,'meaning':'Fresh signed round trips through the existing Paqet SOCKS5 listener, not origin/VPN application health.'}
+    result={'tcp_ok':False,'udp_ok':False,'verification':'signed-round-trip','meaning':'Fresh signed round trips through the existing Paqet SOCKS5 listener, not origin/VPN application health.'}
     row=rows[0]
     start=time.monotonic()
     try:
@@ -95,3 +99,20 @@ def test(cfg,material):
             result.update(udp_ok=True,udp_latency_ms=round((time.monotonic()-start)*1000,3))
     except (OSError,ValueError,KeyError,TypeError):result['udp_error']='UDP signed round trip failed'
     return result
+
+
+def forward_diagnostics(cfg,targets=()):
+    """Opening an existing local forward is NOT evidence of origin delivery."""
+    listeners=[]
+    if cfg.get('role')=='client':
+        for row in cfg.get('forward',[])[:32]:
+            if row.get('protocol','tcp')!='tcp':continue
+            address=row.get('listen','');host,port=endpoint('0.0.0.0'+address if address.startswith(':') else address)
+            if host in ('0.0.0.0','::'):host='127.0.0.1' if host=='0.0.0.0' else '::1'
+            reachable=False
+            try:
+                with socket.create_connection((host,port),timeout=.5):reachable=True
+            except OSError:pass
+            listeners.append({'listen':address,'target':row.get('target'),'tcp_accepting':reachable})
+    return {'local_listeners':listeners,'origin_targets':list(targets),
+            'meaning':'Local TCP acceptance and paired foreign origin reachability are independent diagnostics, not a verified tunnel round trip.'}

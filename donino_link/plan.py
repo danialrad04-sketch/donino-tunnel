@@ -198,10 +198,13 @@ def paqet_config(role, iran, foreign, port, token, mappings, settings=None):
     return json.dumps(config,indent=2)+"\n"
 
 
-def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090, paqet_options=None):
+def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090, paqet_options=None,continuum_options=None):
     from .paqet import options, safe_options
     if paqet_options is not None and 'paqet' not in transports:raise ValueError('Paqet settings require the Paqet carrier')
     paqet_settings=options(paqet_options) if 'paqet' in transports else None
+    from .continuum import options as resilient_options
+    if continuum_options is not None and 'donino-continuum' not in transports:raise ValueError('Continuum options require the Continuum carrier')
+    resilient=resilient_options(continuum_options)
     if not transports or len(set(transports)) != len(transports) or not set(transports) <= set(TRANSPORTS):
         raise ValueError("select unique supported transports")
     if set(transports) & EXPERIMENTAL and not experimental:
@@ -251,6 +254,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     if health_port in target_ports:
         raise ValueError('foreign health port conflicts with an origin service')
     foreign_ports=[health_port]+list(target_ports)
+    if 'donino-continuum' in transports:foreign_ports+=resilient['alternate_ports']
     if paqet_settings and health_port>=65535:raise ValueError('Paqet UDP health port is out of bounds')
     if paqet_settings and health_port+1 in {endpoint(r['target'])[1] for r in paqet_settings['forwards'] if r['protocol']=='udp'}:raise ValueError('Paqet UDP health conflicts with an origin')
     if relay_transports:
@@ -321,6 +325,10 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
                 else:
                     for suffix in ['crt','key']:shutil.copy2(output/'ca'/f'browser.{suffix}',root/'certs'/f'browser.{suffix}')
                     common.update(listen=f'0.0.0.0:{port}',cert=f'{ETC}/certs/browser.crt',key=f'{ETC}/certs/browser.key',targets={name:target for name,_,target in mappings})
+                if t=='donino-continuum':
+                    common.update(recovery_timeout=resilient['recovery_timeout'],retry_max=resilient['retry_max'])
+                    if role=='iran':common['alternate_urls']=[f'wss://{host}:{p}/continuum' for p in resilient['alternate_ports']]
+                    else:common['alternate_listens']=[f'0.0.0.0:{p}' for p in resilient['alternate_ports']]
                 text=json.dumps(common,indent=2)+'\n'
                 command=f'{OPT}/venv/bin/python -m donino_link.{module} --config {ETC}/{file}'
             elif t=='browser-wss':
@@ -402,7 +410,7 @@ WantedBy=multi-user.target
     write(output/'iran'/'api-token',secrets.token_urlsafe(48)+'\n')
     for role in ['iran','foreign']:
         atomic_json(output/role/'install.json',{'schema':1,'role':role,'engines':sorted(engines),'units':units[role],
-                    'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]},
+                    'public_ports': {'tcp': [carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services]+[panel_port], 'udp': [carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']} if role=='iran' else {'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')]+(resilient['alternate_ports'] if 'donino-continuum' in transports else []),'udp':[]},
                     'listeners': ([{'protocol':'tcp','port':p} for p in iran_ports] + [{'protocol':'udp','port':carrier_port(i,t)} for i,t in enumerate(transports) if t=='frp-quic']) if role=='iran' else [{'protocol':'tcp','port':p} for p in foreign_ports if p not in target_ports],
                     'browser': 'browser-wss' in transports and role=='iran', 'paqet_peer':foreign if role=='iran' else iran,'paqet_port':paqet_port if 'paqet' in transports else None,
                     'paqet_network':paqet_settings['network'].get(role,{}) if paqet_settings else {}})
@@ -410,6 +418,9 @@ WantedBy=multi-user.target
              'certificate_days':90,'firewall':{'iran':{'tcp':[carrier_port(i,t) for i,t in enumerate(transports) if t not in ('paqet','browser-wss','donino-mux','donino-continuum')]+[endpoint(s['listen'])[1] for s in services],
                                   'udp':[carrier_port(i,t) for i,t in enumerate(transports) if t=='frp-quic']},
                                   'foreign':{'tcp':([paqet_port] if 'paqet' in transports else [])+[carrier_port(i,t) for i,t in enumerate(transports) if t in ('browser-wss','donino-mux','donino-continuum')],'udp':[]}}}
+    if 'donino-continuum' in transports:
+        summary['continuum']=resilient
+        summary['firewall']['foreign']['tcp']+=resilient['alternate_ports']
     if paqet_settings:
         summary['paqet']=safe_options(paqet_settings)
         for protocol,ports in [('tcp',paqet_extra_tcp),('udp',paqet_extra_udp)]:

@@ -15,7 +15,7 @@ async function main(){
       child.on('exit',code=>{clearTimeout(timer);reject(Error('engine fixture exited '+code));});
       child.stdout.on('data',b=>{if(b.toString().includes('LOCAL INTEGRATION PANEL READY')){clearTimeout(timer);resolve();}});
     });
-    browser=await chromium.launch({headless:true,chromiumSandbox:true,executablePath:process.env.DONINO_CHROMIUM||'/usr/bin/google-chrome'});
+    browser=await chromium.launch({headless:true,chromiumSandbox:process.env.DONINO_UI_SANDBOX!=='0',executablePath:process.env.DONINO_CHROMIUM||'/usr/bin/google-chrome'});
     const page=await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto('http://127.0.0.1:18090');
@@ -25,13 +25,13 @@ async function main(){
     await page.locator('#login-form button').click();
     await page.locator('#dashboard').waitFor({state:'visible'});
     await page.waitForFunction(()=>document.querySelectorAll('.path-card').length===4);
-    await page.locator('#pause').click();
+    await page.evaluate(()=>navigateWorkspace('#overview'));await page.locator('#pause').click();
     await page.waitForFunction(()=>document.querySelector('#pause').textContent.includes('ادامه'));
-    await page.locator('#pause').click();
+    await page.evaluate(()=>navigateWorkspace('#overview'));await page.locator('#pause').click();
     await page.waitForFunction(()=>document.querySelector('#pause').textContent.includes('توقف'));
-    const cards=page.locator('.path-card');
+    await page.evaluate(()=>navigateWorkspace('#paths'));const cards=page.locator('.path-card');
     await cards.filter({hasText:'frp-quic'}).locator('select').selectOption('prefer');
-    await page.waitForFunction(()=>document.querySelector('#hero-description').textContent.includes('frp-quic'));
+    await page.waitForFunction(()=>document.querySelector('#hero-description').textContent.includes('frp-quic'));await page.evaluate(()=>navigateWorkspace('#overview'));
     fs.mkdirSync('ui-results',{recursive:true});
     await page.screenshot({path:'ui-results/desktop.png',fullPage:true});
     const desktopOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
@@ -55,7 +55,7 @@ async function main(){
       else result=profile;
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(result)});
     });
-    await page.locator('#setup-details summary').first().click();
+    await page.evaluate(()=>{navigateWorkspace('#setup');document.querySelector('#setup-details').open=true});
     await page.waitForFunction(()=>document.querySelector('#setup-public-key').value.includes('fixture'));
     await page.locator('#setup-profile').selectOption(profile.id);
     await page.locator('#setup-iran').fill('192.0.2.10');
@@ -68,13 +68,13 @@ async function main(){
     await page.locator('#setup-confirm').check();await page.locator('#setup-start').click();
     await page.locator('#setup-job').waitFor({state:'visible'});
     await page.waitForFunction(()=>document.querySelector('#setup-job-status').textContent.includes('در حال'));
-    await page.locator('#setup-details summary').first().click();
+    await page.evaluate(()=>{navigateWorkspace('#setup');document.querySelector('#setup-details').open=true});
 
     await page.setViewportSize({width:390,height:844});
-    await page.locator('#setup-details summary').first().click();
+    await page.evaluate(()=>{navigateWorkspace('#setup');document.querySelector('#setup-details').open=true});
     const setupMobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     await page.locator('#setup').screenshot({path:'ui-results/setup-mobile.png'});
-    await page.locator('#setup-details summary').first().click();
+    await page.evaluate(()=>{navigateWorkspace('#setup');document.querySelector('#setup-details').open=true});
     await page.screenshot({path:'ui-results/mobile.png',fullPage:true});
     const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     await page.locator('#mobile-logout').click();await page.locator('#login').waitFor({state:'visible'});

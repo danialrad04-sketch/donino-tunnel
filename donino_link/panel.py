@@ -40,7 +40,7 @@ class Panel:
         self.runner = None
         self.app = web.Application(client_max_size=65536, middlewares=[self.security,self.authentication])
         self.app.add_routes([
-            web.get("/",self.index),web.get("/app.js",self.static),web.get("/style.css",self.static),web.get('/Vazirmatn.woff2',self.static),
+            web.get("/",self.index),web.get("/app.js",self.static),web.get("/workspace.js",self.static),web.get("/style.css",self.static),web.get('/Vazirmatn.woff2',self.static),
             web.get("/healthz",self.healthz),web.post("/api/login",self.login),
             web.post("/api/logout",self.logout),web.get("/api/session",self.session),
             web.get("/api/status",self.status),web.get("/api/metrics",self.metrics),
@@ -190,8 +190,9 @@ class Panel:
             async with ClientSession(connector=UnixConnector(path=str(SOCKET)),timeout=ClientTimeout(total=90)) as session:
                 async with session.request(request.method,'http://localhost'+route,json=body) as response:
                     result = await response.json()
-                    if request.method == 'POST' and response.status < 400:
-                        self.gateway.store.event('provision',{'operation':route,'id':result.get('id')})
+                    if request.method == 'POST' and response.status < 400 and not (route=='/imported-action' and body.get('action') in ('logs','inspect')):
+                        self.gateway.store.event('provision',{'operation':route,'id':result.get('id'),
+                            'service_id':body.get('id'),'action':body.get('action'),'unit':result.get('unit')})
                     return web.json_response(result,status=response.status)
         except (ClientError,asyncio.TimeoutError,OSError):
             return web.json_response({'error':'ارتباط با سرویس نصب قطع شد؛ وضعیت عملیات را دوباره بررسی کن.'},status=503)
@@ -207,14 +208,27 @@ class Panel:
             async with ClientSession(connector=UnixConnector(path=str(SOCKET)),timeout=ClientTimeout(total=15)) as session:
                 async with session.request(request.method,'http://localhost'+route,json=body) as response:
                     result=await response.json()
-                    if request.method=='POST' and response.status<400:self.gateway.store.event('foreign-action',{'operation':route,'unit':body.get('unit') if isinstance(body,dict) else None})
+                    if request.method=='POST' and response.status<400 and not (route=='/imported-action' and isinstance(body,dict) and body.get('action') in ('logs','inspect')):
+                        self.gateway.store.event('foreign-action',{'operation':route,'unit':body.get('unit') or result.get('unit'),
+                            'service_id':body.get('id'),'action':body.get('action')})
                     return web.json_response(result,status=response.status)
         except (ClientError,OSError,asyncio.TimeoutError):return web.json_response({'error':'سرویس مدیریت خارج در دسترس نیست.'},status=503)
         except ValueError:raise web.HTTPBadRequest(text='invalid JSON')
 
     async def export(self, request):
         # Observations only, deliberately excludes tokens and configuration secrets.
-        return web.json_response(self.gateway.snapshot(),headers={"Content-Disposition":"attachment; filename=donino-link-observations.json"})
+        snapshot=self.gateway.snapshot()
+        if self.gateway.config['role']=='iran':
+            from .provision import SOCKET
+            try:
+                async with ClientSession(connector=UnixConnector(path=str(SOCKET)),timeout=ClientTimeout(total=12)) as session:
+                    async with session.get('http://localhost/state') as response:
+                        if response.status==200:
+                            data=await response.json()
+                            for key in ('inventory','remote_inventory','paqet','paqet_capabilities'):
+                                if key in data:snapshot[key]=data[key]
+            except (ClientError,OSError,ValueError,asyncio.TimeoutError):snapshot['inventory_error']='local observer unavailable'
+        return web.json_response(snapshot,headers={"Content-Disposition":"attachment; filename=donino-link-observations.json"})
 
     async def metrics(self, request):
         g = self.gateway

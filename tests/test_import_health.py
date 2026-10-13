@@ -76,4 +76,12 @@ class ImportedHealthTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):imported_test(self.cfg,{**self.material,'tcp':'198.51.100.1:19090'})
         self.assertIsNone(key_id({}));self.assertEqual(key_id({'transport':{'kcp':{'key':'matching'}}}),key_id({'transport':{'kcp':{'key':'matching'}}}))
 
+    async def test_forward_only_install_reports_diagnostics_without_claiming_signed_health(self):
+        cfg={'role':'client','forward':[{'listen':':'+str(self.proxy.sockets[0].getsockname()[1]),'target':'127.0.0.1:443','protocol':'tcp'}]}
+        original=copy.deepcopy(cfg)
+        result=await asyncio.to_thread(imported_test,cfg,{**self.material,'targets':[{'target':'127.0.0.1:443','reachable':True}]})
+        self.assertTrue(result['local_listeners'][0]['tcp_accepting']);self.assertTrue(result['origin_targets'][0]['reachable'])
+        self.assertIsNone(result['tcp_ok']);self.assertIsNone(result['udp_ok']);self.assertEqual(result['verification'],'diagnostics-only')
+        self.assertEqual(cfg,original)
+
 if __name__=='__main__':unittest.main()

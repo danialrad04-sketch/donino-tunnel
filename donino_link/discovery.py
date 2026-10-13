@@ -21,11 +21,12 @@ from functools import wraps
 from .import_health import key_id
 from pathlib import Path
 import yaml
+from .adapters import identify, capabilities
 from .paqet import KCP_INTS, MODES, BLOCKS, flags, number
 from .config import endpoint, loopback, atomic_json
 
 UNIT_RE=re.compile(r'[A-Za-z0-9_.@\\:-]{1,180}\.service')
-SECRET=re.compile(r'(?i)(password|secret|token|private.?key|^key$)')
+SECRET=re.compile(r'(?i)(password|passwd|passphrase|(?:^|_)pass(?:$|_)|secret|token|private.?key|authorization|uuid|^id$|^psk$|^key$)')
 REDACTED='[redacted]'
 
 
@@ -96,27 +97,32 @@ def restore_secrets(new,old):
 
 
 def known_engine(argv,unit):
-    for argument in argv[:1]:
-        name=Path(argument).name.lower()
-        if re.fullmatch(r'paqet(?:[_-](?:linux|amd64|arm64|x86_64|aarch64)[A-Za-z0-9_-]*)?',name):return 'paqet'
-        for engine,names in [('frp',('frpc','frps')),('backpack',('backpack',)),('backhaul',('backhaul',)),('xray',('xray',)),('wireguard',('wg-quick',))]:
-            if name in names:return engine
-    if unit.startswith('donino-link-'):
-        for engine in ('browser-wss','donino-mux','donino-continuum'):
-            if unit=='donino-link-'+engine+'.service':return engine
-    return None
+    return identify(argv,unit)
 
 
 def config_arg(argv,working):
     path=None
     for i,arg in enumerate(argv):
-        if arg in ('-c','--config') and i+1<len(argv):path=argv[i+1];break
+        if arg in ('-c','--config','-config','--config-file') and i+1<len(argv):path=argv[i+1];break
         if arg.startswith('--config='):path=arg.split('=',1)[1];break
         if arg.startswith('-c='):path=arg[3:];break
     if not path:return None
     file=Path(path)
     if not file.is_absolute():file=Path(working or '/')/file
     return str(file.resolve())
+
+
+def read_vendor_config(file):
+    path=Path(file)
+    if not path.is_file() or path.stat().st_size>262144:raise ValueError('configuration must be a regular file <=256 KiB')
+    if path.suffix.lower()=='.toml':
+        try:import tomllib
+        except ImportError:import tomli as tomllib
+        raw=path.read_bytes()
+        try:cfg=tomllib.loads(raw.decode())
+        except (ValueError,UnicodeError):raise ValueError('configuration TOML could not be parsed') from None
+        return cfg,raw
+    return read_config(file)
 
 
 def validate_paqet(cfg):
@@ -196,7 +202,7 @@ def synchronized(method):
 
 class Inventory:
     def __init__(self,root,live):
-        self.root,self.live=Path(root),Path(live);self.rows={};self.checked=0;self.last_scan_time=0;self.error='';self.recovery_error='';self.health={};self.lock=threading.RLock()
+        self.root,self.live=Path(root),Path(live);self.rows={};self.checked=0;self.last_scan_time=0;self.error='';self.recovery_error='';self.health={};self.history={};self.lock=threading.RLock()
     @synchronized
     def scan(self,force=False):
         if not force and time.monotonic()-self.checked<8:return self.public()
@@ -238,7 +244,7 @@ class Inventory:
                         except (OSError,UnicodeError):pass
                     if not engine and 'paqet' in unit.lower():engine='paqet-unconfirmed'
                     if not engine:continue
-                    file=config_arg(argv,props.get('WorkingDirectory')) if engine=='paqet' else None
+                    file=config_arg(argv,props.get('WorkingDirectory'))
                     binary=str(Path(argv[0]).resolve()) if argv and Path(argv[0]).is_absolute() else None
                     identity=hashlib.sha256(unit.encode()).hexdigest()[:24]
                     row={'id':identity,'unit':unit,'engine':engine,'active':props.get('ActiveState')=='active','state':props.get('ActiveState','unknown'),
@@ -246,7 +252,7 @@ class Inventory:
                          'restarts':int(props.get('NRestarts','0')),'config_path':file,'binary':binary,'argv':argv,
                          'descriptor':hashlib.sha256(json.dumps([unit,file,binary,argv]).encode()).hexdigest(),
                          'managed_by_donino':unit.startswith('donino-link-'),'config_error':None}
-                    if file:
+                    if file and engine=='paqet':
                         try:
                             cfg,raw=read_config(file)
                             if cfg.get('role') not in ('client','server'):raise ValueError('Paqet configuration role is missing')
@@ -255,6 +261,11 @@ class Inventory:
                             row['editable']=True
                         except (ValueError,KeyError,TypeError,OSError) as error:
                             row['editable']=False;row['config_error']=str(error) if isinstance(error,ValueError) else 'configuration is inaccessible or unsupported'
+                    elif file and Path(file).suffix.lower() in ('.json','.yaml','.yml','.toml'):
+                        try:
+                            cfg,raw=read_vendor_config(file)
+                            row.update(config=cfg,revision=hashlib.sha256(raw).hexdigest(),editable=False,role=cfg.get('role'))
+                        except (ValueError,OSError,TypeError,ImportError):row['config_error']='configuration is inaccessible or unsupported; logs and process status remain available'
                     rows[identity]=row
             self.rows=rows;self.error='Some systemd units could not be inspected; discovered units are shown.' if partial else ''
             self.processes();self.last_scan_time=time.time()
@@ -279,10 +290,12 @@ class Inventory:
                 working=os.readlink(file.parent/'cwd')
                 identity=hashlib.sha256(('process:'+str(pid)+':'+str(argv)).encode()).hexdigest()[:24]
                 row={'id':identity,'unit':'process:'+str(pid),'engine':engine,'pid':pid,'active':True,'state':'running','source':'process',
-                     'enabled':'unmanaged','memory':None,'restarts':None,'config_path':config_arg(argv,working) if engine=='paqet' else None,
+                     'enabled':'unmanaged','memory':None,'restarts':None,'config_path':config_arg(argv,working),
                      'managed_by_donino':False,'editable':False,'config_error':None,'descriptor':None}
                 if row['config_path']:
-                    cfg,data=read_config(row['config_path']);row.update(config=cfg,role=cfg.get('role'),revision=hashlib.sha256(data).hexdigest())
+                    try:
+                        cfg,data=read_vendor_config(row['config_path']);row.update(config=cfg,role=cfg.get('role'),revision=hashlib.sha256(data).hexdigest())
+                    except (OSError,ValueError,ImportError):row['config_error']='configuration is inaccessible or unsupported; process remains visible'
                 self.rows[identity]=row
             except (OSError,ValueError,UnicodeError):continue
     @synchronized
@@ -291,21 +304,36 @@ class Inventory:
         return json.loads(file.read_text()) if file.exists() else {}
     @synchronized
     def public(self):
+        from .health import host_stats
+        from .runtime import relay_metrics
         grants=self.registry();rows=[]
         for row in self.rows.values():
             public={k:v for k,v in row.items() if k not in ('argv','descriptor','binary','config')}
             public['management_enabled']=bool(row.get('descriptor') and grants.get(row['id'])==row['descriptor'])
-            if 'config' in row:public['config']=safe(row['config']);public['key_id']=key_id(row['config'])
+            if 'config' in row:public['config']=safe(row['config']);public['key_id']=key_id(row['config']) if row['engine']=='paqet' else None
+            public['capabilities']=capabilities(row)
+            public['metrics']=relay_metrics(row['engine'],row.get('role'),row.get('process_pid',row['pid'])) if row['active'] else None
             observation=self.health.get(row['id'])
             public['health']=observation if observation and row['active'] and observation.get('revision')==row.get('revision') and 0<=time.time()-observation['time']<45 else None
+            public['history']=[v for v in self.history.get(row['id'],[]) if v['revision']==row.get('revision')]
             rows.append(public)
-        return {'services':rows,'checked_at':self.last_scan_time,'error':self.recovery_error or self.error,'mode':'passive; no service mutations'}
+        return {'services':rows,'host':host_stats(),'checked_at':self.last_scan_time,'error':self.recovery_error or self.error,'mode':'passive; no service mutations',
+                'summary':{'detected':len(rows),'running':sum(r['active'] for r in rows),'tunnels':sum(r['capabilities']['category']=='tunnel' for r in rows),
+                           'auxiliary':sum(r['capabilities']['category']=='auxiliary' for r in rows),
+                           'verified_tcp':sum((r.get('health') or {}).get('tcp_ok') is True for r in rows),
+                           'traffic_measured':any(r['metrics'] is not None for r in rows)}}
     @synchronized
-    def select(self,identity,managed=False):
+    def record_health(self,identity,observation):
+        self.health[identity]=observation
+        entry={k:observation.get(k) for k in ('time','revision','tcp_ok','udp_ok','tcp_latency_ms','udp_latency_ms','verification')}
+        self.history.setdefault(identity,[]).append(entry)
+        self.history[identity]=self.history[identity][-120:]
+    @synchronized
+    def select(self,identity,managed=False,engine=None):
         if not isinstance(identity,str) or not re.fullmatch('[a-f0-9]{24}',identity):raise ValueError('invalid detected service ID')
         self.scan(force=managed)
         row=self.rows.get(identity)
-        if not row or row['engine']!='paqet':raise ValueError('detected Paqet service not found')
+        if not row or (engine and row['engine']!=engine):raise ValueError('detected service not found or unsupported for this operation')
         if managed and (not row.get('descriptor') or self.registry().get(identity)!=row['descriptor']):raise ValueError('enable management of this detected service first')
         return row
     @synchronized
@@ -315,14 +343,16 @@ class Inventory:
         row=self.select(identity);grants=self.registry()
         if row.get('source')=='process':raise ValueError('standalone processes are read-only; service management requires systemd')
         if enabled:
-            if not row.get('editable') or not row.get('binary') or not Path(row['binary']).is_file():raise ValueError('direct Paqet executable/config required for management')
-            for file in (Path(row['binary']),Path(row['config_path'])):
+            if not capabilities(row)['control'] or not Path(row['binary']).is_file():raise ValueError('verified executable and systemd service required for management')
+            files=[Path(row['binary'])]
+            if row.get('config_path'):files.append(Path(row['config_path']))
+            for file in files:
                 info=file.stat()
                 if not root_owned(info):raise ValueError('management requires root-owned files without group/world write access')
             grants[identity]=row['descriptor']
         else:grants.pop(identity,None)
         atomic_json(self.root/'adopted-services.json',grants)
-        return {'ok':True,'changed_service':False,'management_enabled':enabled}
+        return {'ok':True,'unit':row['unit'],'changed_service':False,'management_enabled':enabled}
     @synchronized
     def logs(self,identity,cursor=None):
         row=self.select(identity)
@@ -353,7 +383,7 @@ class Inventory:
     @synchronized
     def edit(self,identity,revision,value,ack_peer_change=False):
         if (self.root/'import-edit.json').exists():raise ValueError('pending edit recovery must be resolved before another edit')
-        row=self.select(identity,managed=True)
+        row=self.select(identity,managed=True,engine='paqet')
         if row.get('managed_by_donino'):raise ValueError('use the coordinated Donino reinstall form for managed tunnel configurations')
         if not row.get('editable') or revision!=row.get('revision'):raise ValueError('configuration changed; reload before saving')
         cfg=restore_secrets(copy.deepcopy(value),row['config']);validate_paqet(cfg)
@@ -398,7 +428,7 @@ class Inventory:
         self.checked=0
         # Return the committed revision and a redacted copy so a second save
         # uses the exact file just written, rather than the editor's old hash.
-        return {'ok':True,'restarted':row['active'],'backup_saved':True,'round_trip_verified':False,
+        return {'ok':True,'unit':row['unit'],'restarted':row['active'],'backup_saved':True,'round_trip_verified':False,
                 'revision':journal['new_hash'],'config':safe(cfg)}
     @synchronized
     def recover(self):

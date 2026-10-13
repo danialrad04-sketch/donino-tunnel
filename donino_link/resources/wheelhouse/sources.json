@@ -88,5 +88,11 @@
     "source_url": "https://files.pythonhosted.org/packages/54/22/318c7980066769c6bcd9221ed2248294f5698811da099013098c670565ed/yarl-1.25.1-py3-none-any.whl",
     "source_sha256": "681c758b0490f9e96b78e5fa8e8dc6e648e9185bb6eaebe73183c33ea0c445f3",
     "build": "upstream pure Python wheel"
+  },
+  {
+    "wheel": "tomli-2.4.1-py3-none-any.whl",
+    "source_url": "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl",
+    "source_sha256": "0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe",
+    "build": "upstream pure Python wheel"
   }
 ]

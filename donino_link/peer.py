@@ -258,15 +258,17 @@ class ForeignAgent:
 
     def state(self):
         from .paqet import status
+        from .adapters import paqet_overview
         pairs=[{k:p[k] for k in ['id','name','source','created','revoked']} for p in self.pairs()]
         telemetry=read_json(self.root/'telemetry.json',None)
         if telemetry and not any(p['id']==telemetry.get('peer_id') and not p['revoked'] for p in pairs):telemetry=None
         for identity,observation in list(self.inventory.health.items()):
             if observation.get('peer_id') and not any(p['id']==observation['peer_id'] and not p['revoked'] for p in pairs):self.inventory.health.pop(identity,None)
+        inventory=self.inventory.scan()
         return {'available':True,'agent_port':self.settings['port'],'paired':pairs,'lease':self.lease(),
                 'action_busy':self.action_busy,'actions':read_json(self.root/'actions.json',[]),
                 'pending_expires':read_json(self.root/'pending.json',{}).get('expires'),
-                'telemetry':telemetry,'inventory':self.inventory.scan(),'paqet':status(self.live.parent)}
+                'telemetry':telemetry,'inventory':inventory,'paqet':paqet_overview(status(self.live.parent),inventory)}
 
     async def imported_action(self,body):
         strict_fields(body,['id','action','enabled','cursor','revision','config','ack_peer_change'],['id','action'])
@@ -288,30 +290,50 @@ class ForeignAgent:
             with self.lock:self.action_busy=False
 
     async def external_health(self,body):
-        strict_fields(body,['id'],['id']);row=await asyncio.to_thread(self.inventory.select,body['id'])
+        strict_fields(body,['id','targets'],['id']);row=await asyncio.to_thread(self.inventory.select,body['id'],engine='paqet')
         if row.get('role')!='server':raise ValueError('foreign Paqet server required')
+        from .config import loopback
+        from .health import target_status
+        targets=body.get('targets',[])
+        if not isinstance(targets,list) or len(targets)>32 or any(not isinstance(t,str) or not loopback(t) for t in targets):raise ValueError('diagnostic targets must be bounded loopback addresses')
+        results=await asyncio.gather(*(target_status(t) for t in targets))
         cfg=load_config(self.live)
         async with self.probe_udp_lock:
             if not self.probe_udp:
                 from .udp_health import Responder
                 self.probe_udp=(await asyncio.get_running_loop().create_datagram_endpoint(lambda:Responder(cfg['health_key']),local_addr=('127.0.0.1',0)))[0]
-        return {'key':cfg['health_key'],'tcp':cfg['health_listen'],'udp':'127.0.0.1:'+str(self.probe_udp.get_extra_info('sockname')[1])}
+        return {'key':cfg['health_key'],'tcp':cfg['health_listen'],'udp':'127.0.0.1:'+str(self.probe_udp.get_extra_info('sockname')[1]),
+                'targets':[{'target':target,'reachable':result} for target,result in zip(targets,results)]}
 
     def external_observation(self,pair,body):
-        strict_fields(body,['server_id','time','revision','key_id','tcp_ok','udp_ok','tcp_latency_ms','udp_latency_ms','tcp_error','udp_error','reason','meaning'],['server_id','key_id','tcp_ok','udp_ok'])
+        strict_fields(body,['server_id','time','revision','key_id','tcp_ok','udp_ok','tcp_latency_ms','udp_latency_ms','tcp_error','udp_error','reason','meaning','verification','local_listeners','origin_targets','config_match'],['server_id','key_id','tcp_ok','udp_ok'])
         from .import_health import key_id
         row=self.inventory.select(body['server_id'])
         if row.get('role')!='server' or not key_id(row.get('config',{})) or body['key_id']!=key_id(row['config']):raise ValueError('probe belongs to another Paqet configuration')
         for key in ('tcp_ok','udp_ok'):
             if body[key] is not None and type(body[key]) is not bool:raise ValueError('invalid imported health observation')
         clean={k:body[k] for k in ('tcp_ok','udp_ok')};clean.update(time=time.time(),peer_id=pair['id'],revision=row.get('revision'))
+        if body.get('verification') in ('signed-round-trip','diagnostics-only'):clean['verification']=body['verification']
+        for key in ('reason','meaning'):
+            if key in body:
+                if not isinstance(body[key],str) or len(body[key])>600:raise ValueError('invalid diagnostic explanation')
+                clean[key]=body[key]
+        if 'config_match' in body:
+            if type(body['config_match']) is not bool:raise ValueError('invalid configuration comparison')
+            clean['config_match']=body['config_match']
+        targets=body.get('origin_targets',[])
+        from .config import loopback
+        if not isinstance(targets,list) or len(targets)>32:raise ValueError('invalid origin observations')
+        for target in targets:
+            if not isinstance(target,dict) or set(target)!= {'target','reachable'} or not isinstance(target['target'],str) or not loopback(target['target']) or type(target['reachable']) is not bool:raise ValueError('invalid origin observation')
+        clean['origin_targets']=targets
         for k in ('tcp_latency_ms','udp_latency_ms'):
             if k in body:
                 if type(body[k]) not in (int,float) or not 0<=body[k]<=60000:raise ValueError('invalid imported latency')
                 clean[k]=body[k]
         with self.lock:
             if not any(p['id']==pair['id'] and not p.get('revoked') for p in self.pairs()):raise web.HTTPUnauthorized()
-            self.inventory.health[row['id']]=clean
+            self.inventory.record_health(row['id'],clean)
         return {'accepted':True}
 
     async def action(self, body):

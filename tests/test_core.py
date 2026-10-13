@@ -226,6 +226,35 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         response=await client.post('/api/action',headers={'Authorization':'Bearer private-api-token-for-testing'},json={'path':'primary','action':'prefer'})
         self.assertEqual(response.status,200)
 
+    async def test_log_polling_does_not_flood_events_and_exports_include_inventory(self):
+        from unittest.mock import patch
+        panel,client=await self.panel_client()
+        response=await client.post('/api/login',json={'password':PASSWORD});csrf=(await response.json())['csrf']
+        before=len(panel.gateway.store.events())
+        inventory={'services':[{'unit':'paqet-game.service','config':{'key':'[redacted]'}}]}
+        state={'inventory':inventory,'remote_inventory':{'services':[]},'profiles':[{'agent_token':'private-pair-token'}]}
+        class Response:
+            status=200
+            async def __aenter__(self):return self
+            async def __aexit__(self,*args):pass
+            async def json(self):return state if self.is_state else {'ok':True,'unit':'paqet-game.service'}
+        class Session:
+            def __init__(self,*args,**kwargs):pass
+            async def __aenter__(self):return self
+            async def __aexit__(self,*args):pass
+            def request(self,method,url,**kwargs):r=Response();r.is_state=False;return r
+            def get(self,url):r=Response();r.is_state=True;return r
+        socket_path=self.tmp/'observer.sock';socket_path.touch()
+        with patch('donino_link.provision.SOCKET',socket_path),patch('donino_link.panel.ClientSession',Session):
+            for _ in range(5):
+                result=await client.post('/api/provision/imported-action',headers={'X-CSRF-Token':csrf},json={'id':'a'*24,'action':'logs'})
+                self.assertEqual(result.status,200)
+            self.assertEqual(len(panel.gateway.store.events()),before)
+            result=await client.post('/api/provision/imported-action',headers={'X-CSRF-Token':csrf},json={'id':'a'*24,'action':'manage','enabled':True})
+            self.assertEqual(result.status,200);self.assertEqual(len(panel.gateway.store.events()),before+1)
+            exported=await (await client.get('/api/export')).json();self.assertEqual(exported['inventory'],inventory)
+            self.assertNotIn('private-pair-token',json.dumps(exported));self.assertIn('remote_inventory',exported)
+
     async def test_login_rate_limit(self):
         _,client=await self.panel_client()
         for _ in range(5):

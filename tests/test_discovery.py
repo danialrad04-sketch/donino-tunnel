@@ -78,6 +78,48 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(all(cmd[1] in ('list-unit-files','list-units','show') for cmd in self.commands))
         self.assertTrue(self.file.read_text().startswith('# vendor'))
 
+    def test_generic_vendor_logs_and_opt_in_control_are_not_paqet_only(self):
+        self.binary=self.root/'backpack';self.binary.write_bytes(b'fixture');self.binary.chmod(0o755)
+        self.unit='backpack-monitor.service'
+        row=self.selected();self.assertEqual(row['engine'],'backpack');self.assertEqual(row['capabilities']['category'],'auxiliary')
+        self.assertFalse(row['capabilities']['edit']);self.assertTrue(row['capabilities']['logs'])
+        self.inventory.logs(row['id']);self.assertEqual(self.commands[-1][0],'journalctl')
+        with self.assertRaises(ValueError):self.inventory.control(row['id'],'restart')
+        self.inventory.enable(row['id'],True);self.inventory.control(row['id'],'restart')
+        self.assertIn(['systemctl','restart',self.unit],self.commands)
+        with self.assertRaises(ValueError):self.inventory.edit(row['id'],row.get('revision'),{})
+
+    def test_toml_vendor_configuration_is_readable_and_secrets_remain_hidden(self):
+        self.binary=self.root/'frpc';self.binary.write_bytes(b'fixture');self.binary.chmod(0o755)
+        self.file=self.root/'frp.toml';self.file.write_text('serverAddr = "198.51.100.20"\n[auth]\ntoken = "private-vendor-token"\n');self.file.chmod(0o600)
+        row=self.selected();self.assertEqual(row['config']['serverAddr'],'198.51.100.20')
+        self.assertEqual(row['config']['auth']['token'],'[redacted]');self.assertNotIn('private-vendor-token',json.dumps(row))
+        self.assertFalse(row['capabilities']['edit'])
+
+    def test_proxy_uuid_and_shared_credentials_are_redacted(self):
+        cfg={'clients':[{'id':'private-vless-uuid','uuid':'private-uuid','password':'private-password'}],
+             'auth_pass':'private-auth','psk':'private-wireguard-shared-key','server':'example.com'}
+        clean=safe(cfg);self.assertNotIn('private-',json.dumps(clean));self.assertEqual(clean['server'],'example.com')
+
+    def test_service_name_cannot_forge_a_native_engine(self):
+        self.assertIsNone(known_engine(['/bin/bash','-c','echo harmless'],'donino-link-donino-continuum.service'))
+        self.assertEqual(known_engine(['/usr/bin/python3','-m','donino_link.continuum','--config','x.json'],'custom.service'),'donino-continuum')
+
+    def test_existing_paqet_is_installed_without_claiming_donino_or_a_pinned_version(self):
+        from donino_link.adapters import paqet_overview
+        result=paqet_overview({'installed':False,'version':'manifest-version'},self.inventory.scan(True))
+        self.assertTrue(result['installed']);self.assertFalse(result['managed_installation']);self.assertIsNone(result['version'])
+        self.assertEqual(result['instances'][0]['unit'],self.unit)
+
+    def test_health_history_is_bounded_and_invalidated_by_config_revision(self):
+        row=self.selected()
+        import time
+        for _ in range(130):self.inventory.record_health(row['id'],{'time':time.time(),'revision':row['revision'],'tcp_ok':True,'udp_ok':False,'tcp_latency_ms':3})
+        public=self.inventory.public();self.assertEqual(len(public['services'][0]['history']),120)
+        self.assertEqual(public['summary']['verified_tcp'],1)
+        self.file.write_bytes(self.file.read_bytes()+b'\n# revised\n');public=self.inventory.scan(True)
+        self.assertEqual(public['services'][0]['history'],[]);self.assertEqual(public['summary']['verified_tcp'],0)
+
     def test_management_opt_in_does_not_change_or_restart_service(self):
         row=self.selected();before=self.file.read_bytes();self.commands=[]
         result=self.inventory.enable(row['id'],True)

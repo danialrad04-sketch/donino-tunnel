@@ -1,0 +1,395 @@
+{
+  "version": "0.2.0",
+  "baseline_tests": {
+    "count": 174,
+    "result": "passed",
+    "log_scope": "portable Python packages, loopback TCP/TLS/WSS, unit/worker tests",
+    "final_run_seconds": 70.681
+  },
+  "additional_discovery_tests": {
+    "count": 24,
+    "result": "passed",
+    "includes_proxy_uuid_redaction": true
+  },
+  "workspace_ui": {
+    "scope": "Real Chromium with declared fixture APIs; both roles, existing-only and managed-path states",
+    "checks": 528,
+    "distinct_pages": true,
+    "service_subpages": true,
+    "forward_only_health_honest": true,
+    "generic_vendor_logs": true,
+    "drafts_preserved": true,
+    "deep_links_and_history": true,
+    "no_service_mutations": true,
+    "js_errors": []
+  },
+  "responsive_ui": {
+    "scope": "Actual UI in Chromium; declared public API fixture, Android touch and Windows desktop UA; no OS/device or VPS certification",
+    "results": [
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      }
+    ],
+    "focus_trap": true,
+    "escape_and_backdrop": true,
+    "resize_unlocks_content": true,
+    "polling_preserves_focus_and_draft": true,
+    "live_log_dialog": true,
+    "advanced_forms_no_overflow": true,
+    "no_service_mutations": true,
+    "js_errors": []
+  },
+  "real_engine_ui": {
+    "login": true,
+    "pause_resume": true,
+    "prefer": true,
+    "mobile_logout": true,
+    "dark_light_theme_persists": true,
+    "manual_refresh": true,
+    "installer_form_fixture": true,
+    "review_required": true,
+    "job_progress": true,
+    "installer_mobile_overflow": false,
+    "js_errors": [],
+    "horizontal_overflow": false
+  },
+  "continuum_real_socket_checks": [
+    "existing TCP stream survives original WSS listener loss via another port on same server",
+    "dead primary WSS endpoint falls back to authenticated alternate",
+    "origin accepted exactly once and no duplicate payload",
+    "bounded jittered backoff during blackout"
+  ],
+  "limits": [
+    "Browser UI uses declared API fixtures except real-engine panel test; no VPS certification",
+    "No claim of current Iran ISP reachability or universal DPI bypass",
+    "No deployed user VPS services/configuration changed in this session",
+    "Systemd two-node installation matrix remains CI coverage"
+  ],
+  "verification": {
+    "date_utc": "2026-10-12",
+    "source_baseline": "558df2a619a93fa692fda90dea2a6e986edac4ee",
+    "fresh_run": true,
+    "python": "3.12.14",
+    "browser": "Chrome headless shell; local UI sandbox disabled for container fixtures only",
+    "portable_installer_reproduced": true,
+    "real_engine_ui": true,
+    "user_vps_modified": false
+  }
+}

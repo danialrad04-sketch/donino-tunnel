@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{
    res.writeHead(200,{'Content-Type':'text/html','Set-Cookie':'fixture_role='+ (url.searchParams.get('role')==='foreign'?'foreign':'iran')+'; Path=/; SameSite=Strict'});
    return res.end(fs.readFileSync(path.join(root,'donino_link/web/index.html')));
   }
-  if(['/app.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){
+  if(['/app.js','/workspace.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){
    res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'font/woff2');return res.end(fs.readFileSync(path.join(root,'donino_link/web',url.pathname.slice(1))));
   }
   let raw='';for await(const chunk of req)raw+=chunk;const body=raw?JSON.parse(raw):null;
@@ -55,12 +55,12 @@ async function contrast(page){
 }
 async function main(){
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url='http://127.0.0.1:'+server.address().port;
- const browser=await chromium.launch({headless:true,chromiumSandbox:true,executablePath:process.env.DONINO_CHROMIUM||'/usr/bin/google-chrome'});const errors=[],results=[];
+ const browser=await chromium.launch({headless:true,chromiumSandbox:process.env.DONINO_UI_SANDBOX!=='0',executablePath:process.env.DONINO_CHROMIUM||'/usr/bin/google-chrome'});const errors=[],results=[];
  try{
   for(const role of ['iran','foreign'])for(const mobile of [true,false]){
    const context=await browser.newContext({viewport:{width:mobile?390:1440,height:mobile?844:1000},isMobile:mobile,hasTouch:mobile,reducedMotion:'reduce',userAgent:mobile?'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'});
    const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
-   await page.goto(url+'/?role='+role);await page.locator('#password').fill('responsive-fixture-password');await page.locator('#login-form button').click();await page.locator('#detected-panel').waitFor({state:'visible'});
+   await page.goto(url+'/?role='+role);await page.locator('#password').fill('responsive-fixture-password');await page.locator('#login-form button').click();await page.evaluate(()=>navigateWorkspace('#detected-panel'));await page.locator('#detected-panel').waitFor({state:'visible'});
    for(const theme of ['light','dark']){
     await page.evaluate(theme=>setTheme(theme),theme);
     const widths=mobile?[320,360,390,412,768,844]:[1024,1280,1440,1920];
@@ -78,18 +78,18 @@ async function main(){
      }else{assert.equal(await page.locator('#sidebar').evaluate(n=>n.inert),false);await contrast(page);}
      results.push({role,theme,width,mode:mobile?'Android touch emulation':'Windows desktop UA',overflow:false,menu_contrast_aa:true});
     }
-    await page.setViewportSize({width:mobile?390:1440,height:mobile?844:1000});await page.evaluate(()=>window.scrollTo(0,0));await page.waitForFunction(()=>document.querySelector('#sidebar nav a[href="#overview"]').getAttribute('aria-current')==='location');await page.screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'.png')});
-    const card=page.locator('.detected-service').filter({hasText:role==='iran'?'vendor-edge.service':'vendor-exit.service'}).getByRole('button');await card.click();await card.focus();
-    await page.evaluate(async role=>role==='iran'?await pollSetup():await refresh(),role);assert.equal(await card.evaluate(n=>n===document.activeElement),true,'polling stole service-button focus');
-    if(!await page.locator('#detected-config-details').evaluate(n=>n.open))await page.locator('#detected-config-details summary').click();
+    await page.setViewportSize({width:mobile?390:1440,height:mobile?844:1000});await page.evaluate(()=>navigateWorkspace('#overview'));await page.waitForFunction(()=>document.querySelector('#sidebar nav a[href="#overview"]').getAttribute('aria-current')==='page');await page.screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'.png')});
+    await page.evaluate(()=>navigateWorkspace('#detected-panel'));const card=page.locator('.detected-service').filter({hasText:role==='iran'?'vendor-edge.service':'vendor-exit.service'}).getByRole('button');await card.click();const focus=page.locator('#detected-manage');await focus.focus();
+    await page.evaluate(async role=>role==='iran'?await pollSetup():await refresh(),role);assert.equal(await focus.evaluate(n=>n===document.activeElement),true,'polling stole service-button focus');
+    await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/config'));if(!await page.locator('#detected-config-details').evaluate(n=>n.open))await page.locator('#detected-config-details summary').click();
     const draft=(await page.locator('#detected-config').inputValue())+'\n';await page.locator('#detected-config').fill(draft);await page.evaluate(async role=>role==='iran'?await pollSetup():await refresh(),role);assert.equal(await page.locator('#detected-config').inputValue(),draft,'polling overwrote a draft');
     await overflow(page,'expanded config '+role+' '+theme);await page.locator('#detected-detail').screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'-workspace.png')});
-    await page.locator('#detected-expand-logs').click();await page.locator('#inspector-dialog').waitFor({state:'visible'});const before=await page.locator('#inspector-content').inputValue();
+    await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));await page.locator('#detected-expand-logs').click();await page.locator('#inspector-dialog').waitFor({state:'visible'});const before=await page.locator('#inspector-content').inputValue();
     await page.waitForFunction(previous=>document.querySelector('#inspector-content').value!==previous,before);assert.equal(await page.locator('#inspector-content').evaluate(n=>n.readOnly),true);
     const bounds=await page.locator('#inspector-dialog').boundingBox(),size=page.viewportSize();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=size.width&&bounds.y+bounds.height<=size.height);
     await overflow(page,'log dialog');await page.screenshot({path:path.join(out,'ux-'+role+'-'+theme+'-'+(mobile?'mobile':'desktop')+'-dialog.png')});
     await page.keyboard.press('Escape');assert.equal(await page.locator('#inspector-dialog').evaluate(n=>n.open),false);assert.equal(await page.locator('#inspector-content').inputValue(),'');
-    await page.locator('#detected-expand-config').click();assert.equal(await page.locator('#inspector-content').inputValue(),draft);await page.locator('#inspector-close').click();
+    await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/config'));await page.locator('#detected-expand-config').click();assert.equal(await page.locator('#inspector-content').inputValue(),draft);await page.locator('#inspector-close').click();
     if(role==='iran'){
      if(mobile){await page.locator('#menu-toggle').tap();await page.locator('#nav-setup').tap();}else await page.locator('#nav-setup').click();
      assert.equal(await page.locator('#setup-details').evaluate(n=>n.open),true);await page.locator('#setup-transports input[value="paqet"]').check();if(!await page.locator('#paqet-options').evaluate(n=>n.open))await page.locator('#paqet-options summary').click();

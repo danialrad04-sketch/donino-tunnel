@@ -141,5 +141,28 @@ class PlanTests(unittest.TestCase):
         root=Path(__file__).resolve().parent.parent
         self.assertEqual((root/'pyproject.toml').read_bytes(),(root/'donino_link/resources/pyproject.toml').read_bytes())
 
+    def test_continuum_alternates_are_in_both_bundles_preflight_and_firewall_review(self):
+        plan=self.root/'resilient-plan'
+        summary=make_plan(plan,'192.0.2.10','outside.example',self.services,['donino-continuum'],'private-test-password',True,
+                          continuum_options={'recovery_timeout':30,'retry_max':2,'alternate_ports':[24500,24501]})
+        iran=json.loads((plan/'iran/transports/donino-continuum.json').read_text())
+        foreign=json.loads((plan/'foreign/transports/donino-continuum.json').read_text())
+        self.assertEqual(iran['alternate_urls'],['wss://outside.example:24500/continuum','wss://outside.example:24501/continuum'])
+        self.assertEqual(foreign['alternate_listens'],['0.0.0.0:24500','0.0.0.0:24501'])
+        self.assertEqual(iran['recovery_timeout'],30);self.assertEqual(foreign['recovery_timeout'],30)
+        install=json.loads((plan/'foreign/install.json').read_text())
+        self.assertTrue({24500,24501}.issubset(set(install['public_ports']['tcp'])))
+        self.assertTrue({24500,24501}.issubset({r['port'] for r in install['listeners']}))
+        self.assertTrue({24500,24501}.issubset(set(summary['firewall']['foreign']['tcp'])))
+
+    def test_continuum_alternate_conflicts_and_insecure_urls_are_rejected(self):
+        from donino_link.continuum import options,valid_url
+        for bad in [{'alternate_ports':[True]}, {'alternate_ports':[{}]}, {'alternate_ports':[24500,24500]}, {'recovery_timeout':61}, {'retry_max':float('nan')}]:
+            with self.subTest(options=bad):
+                with self.assertRaises(ValueError):options(bad)
+        for url in ['ws://example.com/continuum','wss://user:pass@example.com/continuum','wss://example.com/other','wss://example.com/continuum?token=x']:
+            with self.assertRaises(ValueError):valid_url(url)
+        with self.assertRaises(ValueError):make_plan(self.root/'collision','192.0.2.10','outside.example',self.services,['donino-continuum'],'private-test-password',True,continuum_options={'alternate_ports':[24443]})
+
 
 if __name__=='__main__':unittest.main()
