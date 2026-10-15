@@ -71,6 +71,11 @@ def load_config(path):
         for target in data.get('targets',{}).values():
             if not loopback(target):
                 raise ValueError('foreign targets must be literal loopback')
+        for service, relay in data.get('udp_relays', {}).items():
+            if not re.fullmatch(r'[a-z][a-z0-9-]{0,31}', service) or not isinstance(relay, dict) or set(relay) != {'listen', 'target'}:
+                raise ValueError('invalid UDP relay')
+            if not loopback(relay['listen']) or not loopback(relay['target']):
+                raise ValueError('UDP relays and targets must be loopback')
         if 'panel' in data: validate_panel(data['panel'])
         return data
     if not data.get("services") or not data.get("paths"):
@@ -85,9 +90,13 @@ def load_config(path):
             raise ValueError("service IDs must be unique safe names")
         names.add(s["id"])
         endpoint(s["listen"])
-        if s["listen"] in listeners:
+        protocol = s.get('protocol', 'tcp')
+        if protocol not in ('tcp', 'udp'):
+            raise ValueError('service protocol must be tcp or udp')
+        listener = (protocol, s['listen'])
+        if listener in listeners:
             raise ValueError("duplicate listener")
-        listeners.add(s["listen"])
+        listeners.add(listener)
     ids = set()
     for p in data["paths"]:
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", p["id"]) or p["id"] in ids:
@@ -101,18 +110,12 @@ def load_config(path):
         for value in p["backends"].values():
             if not loopback(value):
                 raise ValueError("path backends must be loopback")
+        if not set(p.get('udp_backends', {})) <= {s['id'] for s in data['services'] if s.get('protocol') == 'udp'} or any(not loopback(v) for v in p.get('udp_backends', {}).values()):
+            raise ValueError('invalid native UDP backends')
         if not isinstance(p.get("priority", 100), int) or not 0 <= p.get("priority", 100) <= 1000:
             raise ValueError("priority must be between 0 and 1000")
-    pol = data.setdefault("policy", {})
-    for key, default, lo, hi in [("probe_interval", 3, 0.1, 300), ("probe_timeout", 2, 0.05, 60),
-                                ("failures", 3, 1, 50), ("recoveries", 2, 1, 50),
-                                ("connect_timeout", 2, 0.05, 60), ("idle_timeout", 300, 1, 86400),
-                                ("max_connections", 2048, 1, 100000)]:
-        v = pol.setdefault(key, default)
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
-            raise ValueError(f"invalid policy {key}")
-        if key in ("failures", "recoveries", "max_connections") and not isinstance(v, int):
-            raise ValueError(f"{key} must be an integer")
+    from .policy import validate
+    data['policy'] = validate(data.get('policy', {}))
     validate_panel(data['panel'])
     return data
 

@@ -1,7 +1,9 @@
 # Donino readiness — Grill Me decision log
 
 Date: 2026-10-10
-Status: discovery in progress; not a production readiness declaration.
+Status: 0.3.0 is being prepared for operator testing; real VPS/WAN acceptance remains with the operator.
+
+Update 2026-10-15: Workspace 02 adds grouped feature pages, live capacity settings, bounded public UDP associations, Paqet UDP/stream fallback and preserved foreign UDP sockets. Existing Xray/WireGuard backends can be connected; installing a new VPN backend and managing its accounts remain outside this release. See [the current operator test guide](workspace-v03.md). The historical decisions and remaining acceptance criteria below are preserved.
 
 ## Confirmed by the operator
 

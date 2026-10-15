@@ -201,9 +201,9 @@ class Coordinator:
                     break
                 time.sleep(2)
             else:
-                raise RuntimeError('Some selected paths or destination TCP services failed. Check the listed provider firewall ports and origin services.')
+                raise RuntimeError('Some selected paths, TCP destinations or UDP relays failed. Check the listed provider firewall ports and origin services.')
             job['probes'] = rows
-            w.event(job, 'verify', 'done', 'All selected paths and destination TCP services passed')
+            w.event(job, 'verify', 'done', 'All selected paths, TCP destinations and UDP relays passed')
             job['status'] = 'succeeded'
             w.event(job, 'complete', 'done', 'Installation complete; sign in again after the panel restart')
             for role in ['foreign','iran']:
@@ -492,9 +492,9 @@ class Worker:
         fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw','paqet_options','paqet_keep_secrets','continuum_options']
         strict_fields(body, fields, ['profile_id', 'iran', 'services', 'transports'])
         profile = self.profile(body['profile_id'])
-        if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP services')
+        if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP/UDP services')
         for service in body['services']:
-            strict_fields(service, ['id', 'listen', 'target'], ['id', 'listen', 'target'])
+            strict_fields(service, ['id', 'listen', 'target', 'protocol'], ['id', 'listen', 'target'])
             if not all(isinstance(service[k],str) and len(service[k])<=300 for k in ['id','listen','target']): raise ValueError('invalid service field')
         if not isinstance(body['transports'], list) or not all(isinstance(t, str) for t in body['transports']): raise ValueError('invalid transports')
         if not isinstance(body.get('open_ufw', False), bool): raise ValueError('open_ufw must be boolean')

@@ -7,6 +7,7 @@ import json
 import os
 import secrets
 import time
+from pathlib import Path
 from .config import endpoint
 
 
@@ -24,6 +25,16 @@ def host_stats():
                 mem[k] = int(v.strip().split()[0]) * 1024
         result["memory_total"] = mem["MemTotal"]
         result["memory_used"] = mem["MemTotal"] - mem["MemAvailable"]
+        result["memory_available"] = mem["MemAvailable"]
+        # Respect a container/VPS cgroup limit when it is lower than host RAM.
+        limit_path = Path('/sys/fs/cgroup/memory.max')
+        if limit_path.exists():
+            limit = limit_path.read_text().strip()
+            current = Path('/sys/fs/cgroup/memory.current').read_text().strip()
+            if limit.isdigit() and current.isdigit() and 0 < int(limit) < result['memory_total']:
+                result['memory_total'] = int(limit)
+                result['memory_used'] = min(int(current), int(limit))
+                result['memory_available'] = max(0, int(limit) - int(current))
     except (OSError, KeyError):
         pass
     return result

@@ -237,7 +237,8 @@ class ForeignAgent:
             latency = row.get('latency_ms')
             if latency is not None and (isinstance(latency,bool) or not isinstance(latency,(int,float)) or not 0<=latency<=60000): raise ValueError('invalid latency')
             services = row.get('services',{})
-            if not isinstance(services,dict) or set(services)-set(config.get('targets',{})) or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
+            observed_services = set(config.get('targets', {})) | set(config.get('udp_relays', {}))
+            if not isinstance(services,dict) or set(services)-observed_services or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
             clean.append({'path':row['path'],'ok':row['ok'],'latency_ms':latency,'services':services})
             if ('udp_ok' in row or 'udp_latency_ms' in row) and (row['path']!='paqet' or 'udp_ok' not in row):raise ValueError('UDP observations belong to Paqet')
             if row['path']=='paqet' and 'udp_ok' in row:

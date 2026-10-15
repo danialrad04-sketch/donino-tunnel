@@ -27,6 +27,7 @@ jobs:
       - run: cmp pyproject.toml donino_link/resources/pyproject.toml
       - run: cmp scripts/install-node.sh donino_link/resources/install-node.sh
       - run: cmp scripts/rollback.sh donino_link/resources/rollback.sh
+      - run: python scripts/build-web.py --check
       - run: python scripts/build-standalone.py --output /tmp/install-donino-check.sh && cmp install-donino.sh /tmp/install-donino-check.sh
   transport-integration:
     runs-on: ubuntu-24.04
@@ -36,7 +37,12 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install .
-      - run: python scripts/test-engines.py
+      - run: python scripts/test-engines.py --output transport-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: transport-integration-results
+          path: transport-results.json
   browser-integration:
     runs-on: ubuntu-24.04
     steps:

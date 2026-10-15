@@ -45,6 +45,7 @@ class Panel:
             web.post("/api/logout",self.logout),web.get("/api/session",self.session),
             web.get("/api/status",self.status),web.get("/api/metrics",self.metrics),
             web.post("/api/action",self.action),web.get("/api/export",self.export),
+            web.post('/api/settings',self.settings),
             web.get('/api/provision/state',self.provision),
             web.post('/api/provision/profiles',self.provision),
             web.post('/api/provision/pair',self.provision),
@@ -73,6 +74,8 @@ class Panel:
             "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             "Permissions-Policy":"camera=(), microphone=(), geolocation=()",
         })
+        if request.path in ('/app.js','/workspace.js','/style.css','/Vazirmatn.woff2'):
+            response.headers['Cache-Control'] = 'public, max-age=0, must-revalidate'
         if request.secure:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
 
@@ -174,6 +177,18 @@ class Panel:
             raise web.HTTPBadRequest(text="invalid action")
         return web.json_response({"ok":True})
 
+    async def settings(self, request):
+        if self.gateway.config['role'] != 'iran':
+            return web.json_response({'error':'تنظیم مسیر و ظرفیت در پنل ایران انجام می‌شود.'}, status=400)
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or set(body) != {'policy'} or not isinstance(body['policy'], dict):
+                raise ValueError('invalid settings request')
+            policy = self.gateway.configure(body['policy'])
+            return web.json_response({'ok': True, 'policy': policy})
+        except (ValueError, TypeError, KeyError) as error:
+            return web.json_response({'error': str(error)}, status=400)
+
     async def provision(self, request):
         if self.gateway.config['role']!='iran':return web.json_response({'available':False,'error':'این عملیات مخصوص پنل ایران است.'},status=400)
         # Fixed local endpoint. Public requests cannot choose socket, command,
@@ -251,6 +266,11 @@ class Panel:
             lines += [f"donino_path_healthy{label} {int(p.healthy)}",f"donino_path_latency_ms{label} {p.latency_ms or 0}",
                       f"donino_path_enabled{label} {int(p.mode=='enabled')}",
                       f"donino_bytes_up_total{label} {p.bytes_up}",f"donino_bytes_down_total{label} {p.bytes_down}"]
+        for listener in g.udp_listeners:
+            row=listener.snapshot();label='{service="'+row['service']+'"}'
+            for key in ('active','accepted','rejected','dropped','bytes_up','bytes_down','route_changes'):
+                lines.append('donino_udp_'+key+label+' '+str(row[key]))
+        lines.append('donino_admission_memory_pressure '+str(int(g.admission_reason() is not None)))
         return web.Response(text="\n".join(lines)+"\n",content_type="text/plain")
 
     async def start(self):

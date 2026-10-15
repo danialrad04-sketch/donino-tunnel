@@ -33,6 +33,7 @@ class ForeignMonitor:
         self.started=time.time();self.paths={};self.task=None
         self.units=[];self.targets={};self.agent={'available':False};self.metrics_data=None
         self.active=self.accepted=self.rejected=0
+        self.udp_relays=[]
         self.last_telemetry=0;self.previous_units={}
         for u in read_json('/etc/donino-link/current/install.json',{}).get('units',[]):
             name=u.removeprefix('donino-link-').removesuffix('.service')
@@ -94,7 +95,8 @@ class ForeignMonitor:
             'accepted':self.metrics_data['accepted'] if self.metrics_data else None,'rejected':None,'route_changes':None,
             'host':host_stats(),'paths':rows,'services':[],'events':self.store.events(),'units':self.units,'targets':self.targets,
             'foreign':self.agent,'metrics':self.metrics_data,'telemetry_fresh':fresh,'probe_time':telemetry.get('time'),
-            'bootstrap':self.config.get('bootstrap',False),'public_address':self.config.get('public_address')}
+            'bootstrap':self.config.get('bootstrap',False),'public_address':self.config.get('public_address'),
+            'udp':[r.snapshot() for r in self.udp_relays]}
 
     def action(self,*args):raise ValueError('route selection belongs on the Iran panel; use foreign service actions')
 

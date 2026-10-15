@@ -10,6 +10,7 @@ import signal
 import ssl
 import tempfile
 import time
+import resource
 from pathlib import Path
 from donino_link.plan import make_plan
 from donino_link.health import start_responder,probe
@@ -18,6 +19,7 @@ from donino_link.gateway import Gateway
 from donino_link.store import Store
 from donino_link.framed import FramedRelay
 from donino_link.artifacts import install_engines
+from donino_link.datagram import DatagramRelay, Protocol
 
 
 async def test(binary_dir, output, serve_panel=False):
@@ -30,7 +32,8 @@ async def test(binary_dir, output, serve_panel=False):
             await asyncio.to_thread(install_engines,['frp','backpack','backhaul'],binaries)
         transports=['frp-wss','frp-quic','backpack-wss','backhaul-wss']
         plan=root/'plan'
-        services=[{'id':'echo','listen':'127.0.0.1:19990','target':'127.0.0.1:19991'}]
+        services=[{'id':'echo','listen':'127.0.0.1:19990','target':'127.0.0.1:19991'},
+                  {'id':'datagram','listen':'127.0.0.1:19993','target':'127.0.0.1:19994','protocol':'udp'}]
         make_plan(plan,'127.0.0.1','127.0.0.1',services,transports,'integration-only-password-123',True,base=32000,carrier_base=34443,health_port=19992)
         for role in ['iran','foreign']:
             for file in (plan/role/'transports').glob('*.toml'):
@@ -58,6 +61,10 @@ async def test(binary_dir, output, serve_panel=False):
             finally:writer.close();await writer.wait_closed();echo_tasks.discard(task)
         echo_server=await asyncio.start_server(echo,'127.0.0.1',19991)
         health=await start_responder('127.0.0.1:19992',key,{'echo':'127.0.0.1:19991'})
+        udp_origin=None
+        def udp_echo(data,address):udp_origin.sendto(data,address)
+        udp_origin,_=await asyncio.get_running_loop().create_datagram_endpoint(lambda:Protocol(udp_echo),local_addr=('127.0.0.1',19994))
+        udp_relay=DatagramRelay('datagram','127.0.0.1:34001','127.0.0.1:19994',key)
         relays=[FramedRelay(json.loads((plan/role/"transports/framed.json").read_text())) for role in ["iran","foreign"]]
         results={}
         start=time.monotonic()
@@ -75,6 +82,7 @@ async def test(binary_dir, output, serve_panel=False):
                 sending.cancel();await asyncio.gather(sending,return_exceptions=True)
                 writer.close();await writer.wait_closed()
         try:
+            await udp_relay.start()
             for relay in relays:await relay.start()
             await front.start()
             # A correct server CA without a client certificate is insufficient.
@@ -120,6 +128,51 @@ async def test(binary_dir, output, serve_panel=False):
             else:raise AssertionError('gateway did not see all paths healthy')
             await transfer(19990,512*1024)
             assert gateway.last_path=='frp-wss'
+            responses=asyncio.Queue()
+            udp_client,_=await asyncio.get_running_loop().create_datagram_endpoint(
+                lambda:Protocol(lambda data,address:responses.put_nowait(data)),remote_addr=('127.0.0.1',19993))
+            try:
+                for transport in transports:
+                    gateway.action(transport,'prefer')
+                    payload=os.urandom(1200)
+                    udp_client.sendto(payload)
+                    assert await asyncio.wait_for(responses.get(),5)==payload
+                    results[transport]['udp_payload_sha256_match']=True
+                gateway.action('frp-wss','prefer')
+                udp_client.sendto(b'before-real-carrier-loss')
+                assert await asyncio.wait_for(responses.get(),5)==b'before-real-carrier-loss'
+            except BaseException:
+                udp_client.close()
+                raise
+            gateway.action(None,'auto')
+            # Mixed local workload: 50 concurrent TCP transfers and 50 distinct
+            # UDP associations through the real encrypted WSS engine. This is
+            # a bounded echo workload, not 50 VPN users or a WAN benchmark.
+            load_started=time.monotonic();cpu_started=time.process_time();clients=[]
+            try:
+                for index in range(50):
+                    queue=asyncio.Queue()
+                    transport,_=await asyncio.get_running_loop().create_datagram_endpoint(
+                        lambda queue=queue:Protocol(lambda data,address:queue.put_nowait(data)),
+                        remote_addr=('127.0.0.1',19993))
+                    clients.append((transport,queue))
+                async def mixed(index,client):
+                    transport,queue=client
+                    for round_number in range(2):
+                        packet=index.to_bytes(2,'big')+bytes([round_number])*1198
+                        transport.sendto(packet)
+                        assert await asyncio.wait_for(queue.get(),5)==packet
+                        await transfer(19990,64*1024)
+                await asyncio.gather(*(mixed(i,c) for i,c in enumerate(clients)))
+                results['mixed_load']={'scope':'loopback echo through real FRP WSS; no VPN backend or WAN load',
+                    'concurrent_clients':50,'tcp_transfers':100,'udp_associations':50,'udp_messages':100,
+                    'tcp_bytes_each_direction':100*64*1024,'udp_payload_bytes':1200,
+                    'wall_seconds':round(time.monotonic()-load_started,3),
+                    'controller_cpu_seconds':round(time.process_time()-cpu_started,3),
+                    'controller_max_rss_mib':round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,2),
+                    'available_cpu_cores':len(os.sched_getaffinity(0)),'all_payloads_match':True}
+            finally:
+                for transport,_ in clients:transport.close()
             # Real transport loss, not a mocked health flag.
             for t,role,pr in processes:
                 if t=='frp-wss':pr.terminate();await asyncio.to_thread(pr.wait,5)
@@ -130,6 +183,11 @@ async def test(binary_dir, output, serve_panel=False):
             assert not gateway.paths['frp-wss'].healthy,'failure detection timed out'
             await transfer(19990,512*1024)
             assert gateway.last_path=='frp-quic','expected independent QUIC failover'
+            udp_client.sendto(b'after-real-carrier-loss')
+            assert await asyncio.wait_for(responses.get(),5)==b'after-real-carrier-loss'
+            udp_client.close()
+            assert len(udp_relay.flows)==51,'UDP migration reopened the foreign association'
+            results['udp_failover']={'from':'frp-wss','to':'frp-quic','same_origin_association':True,'pass':True}
             results['failover']={'from':'frp-wss','to':'frp-quic','bytes_echoed':512*1024,'pass':True}
             results['elapsed_seconds']=round(time.monotonic()-start,2)
             results['scope']='loopback Linux, amd64; no Iran route, raw packets or production load test'
@@ -152,6 +210,8 @@ async def test(binary_dir, output, serve_panel=False):
             raise
         finally:
             await gateway.stop();store.close()
+            await udp_relay.stop()
+            if udp_origin:udp_origin.close()
             for relay in relays:await relay.stop()
             await front.stop()
             for _,_,pr in processes:
@@ -170,5 +230,9 @@ async def test(binary_dir, output, serve_panel=False):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--binary-dir');p.add_argument('--output');p.add_argument('--serve-panel',action='store_true')
-    a=p.parse_args();asyncio.run(test(a.binary_dir,a.output,a.serve_panel))
+    p=argparse.ArgumentParser();p.add_argument('--binary-dir');p.add_argument('--output');p.add_argument('--serve-panel',action='store_true');p.add_argument('--one-core',action='store_true')
+    a=p.parse_args()
+    if a.one_core:
+        os.sched_setaffinity(0,{min(os.sched_getaffinity(0))})
+        resource.setrlimit(resource.RLIMIT_AS,(1024**3,1024**3))
+    asyncio.run(test(a.binary_dir,a.output,a.serve_panel))

@@ -53,7 +53,7 @@ def validated_node(directory, spec, files):
     if not isinstance(spec['services'], list) or len(spec['services']) > 40:
         raise ValueError('invalid service list')
     for service in spec['services']:
-        strict_fields(service, ['id', 'listen', 'target'], ['id', 'listen', 'target'])
+        strict_fields(service, ['id', 'listen', 'target', 'protocol'], ['id', 'listen', 'target'])
         if any(not isinstance(v, str) or len(v) > 300 for v in service.values()):
             raise ValueError('invalid service field')
     if not isinstance(spec['transports'], list) or not all(isinstance(t, str) for t in spec['transports']):
