@@ -198,7 +198,7 @@ def paqet_config(role, iran, foreign, port, token, mappings, settings=None):
     return json.dumps(config,indent=2)+"\n"
 
 
-def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090, paqet_options=None,continuum_options=None):
+def make_plan(output, iran, foreign, services, transports, password, experimental=False, base=30000, carrier_base=24443, health_port=19090, paqet_port=33434, browser_port=None, panel_port=8090, paqet_options=None,continuum_options=None, *, certificate_factory=None):
     from .paqet import options, safe_options
     if paqet_options is not None and 'paqet' not in transports:raise ValueError('Paqet settings require the Paqet carrier')
     paqet_settings=options(paqet_options) if 'paqet' in transports else None
@@ -284,7 +284,7 @@ def make_plan(output, iran, foreign, services, transports, password, experimenta
     output.mkdir(mode=0o700,parents=True)
     health_key = secrets.token_hex(32)
     (output/"ca").mkdir(mode=0o700)
-    make_certs(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux","donino-continuum"} else None,mux=bool(set(transports)&{'donino-mux','donino-continuum'}))
+    (certificate_factory or make_certs)(output/"ca",iran,foreign=foreign if set(transports)&{"browser-wss","donino-mux","donino-continuum"} else None,mux=bool(set(transports)&{'donino-mux','donino-continuum'}))
     paths,engines,units = [],set(),{"iran":[],"foreign":[]}
     for role in ['iran','foreign']:
         root = output/role

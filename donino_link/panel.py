@@ -48,6 +48,7 @@ class Panel:
             web.get('/api/provision/state',self.provision),
             web.post('/api/provision/profiles',self.provision),
             web.post('/api/provision/pair',self.provision),
+            web.post('/api/provision/connection',self.provision),web.post('/api/provision/remote-action',self.provision),
             web.post('/api/provision/preview',self.provision),
             web.post('/api/provision/start',self.provision),
             web.post('/api/provision/paqet-action',self.provision),web.post('/api/provision/imported-action',self.provision),

@@ -193,6 +193,55 @@ setInterval(()=>{if(!$("dashboard").hidden&&!document.hidden)refresh();},3000);
 
 // Typed installer workflow; installation continues on the server after logout.
 let setupState=null, setupPlan=null, setupRequest=false, setupPolling=false;
+let peerManagementBusy=false;
+function renderPeerManagement(data){
+  if(!data.available)return;
+  let box=$("peer-management");
+  if(!box){
+    box=el("section",undefined,"setup-block");box.id="peer-management";
+    box.append(el("h3","آزمون ارتباط و مدیریت سرور خارج"),el("p","کانال HTTPS مستقل از SSH است. آزمون، یک فایل موقت می‌نویسد، می‌خواند و حذف می‌کند؛ تانل‌ها تغییر نمی‌کنند.","field-help"));
+    const select=el("select");select.id="peer-management-select";select.setAttribute("aria-label","سرور خارج برای مدیریت");
+    const check=el("button","آزمون ارتباط و دریافت سرویس‌های خارج");check.type="button";check.id="peer-management-check";
+    const result=el("p");result.id="peer-management-result";result.setAttribute("role","status");
+    const list=el("div");list.id="peer-management-services";
+    check.onclick=async()=>{
+      if(peerManagementBusy||!select.value)return;peerManagementBusy=true;check.disabled=true;list.replaceChildren();
+      const profileId=select.value;
+      result.textContent="در حال آزمون هویت، اجازهٔ نوشتن و پاسخ سرور خارج…";
+      try{const c=await api("/api/provision/connection",{profile_id:profileId});
+        result.textContent="ارتباط و نوشتن/خواندن تأیید شد · نسخهٔ خارج: "+c.version+(c.runtime_match?" · نسخه‌های دو طرف یکسان است":" · پیش از نصب تانل، هر دو سرور را به یک نسخه ارتقا بده")+(c.ready?"":" · پیش‌نیاز root/systemd خارج آماده نیست");
+        const inventory=await api("/api/provision/remote-action",{profile_id:profileId,kind:"inventory",body:{}});
+        if(select.value===profileId)renderPeerServices(inventory,profileId);
+      }catch(e){result.textContent=e.message;}finally{peerManagementBusy=false;check.disabled=false;}
+    };
+    select.onchange=()=>{list.replaceChildren();result.textContent="برای تأیید این سرور، آزمون ارتباط را اجرا کن.";};
+    box.append(select,check,result,list);$("connection-form").closest(".setup-block").append(box);
+  }
+  const select=$("peer-management-select"),profiles=data.profiles.filter(p=>p.agent_port),key=JSON.stringify(profiles.map(p=>[p.id,p.name]));
+  if(select.dataset.profiles!==key){const selected=select.value;select.replaceChildren();for(const p of profiles){const option=el("option",p.name+" · "+p.host);option.value=p.id;select.append(option);}select.value=profiles.some(p=>p.id===selected)?selected:profiles[0]?.id||"";select.dataset.profiles=key;}
+  $("peer-management-check").disabled=peerManagementBusy||!profiles.length||data.busy;
+}
+function renderPeerServices(inventory,profileId){
+  const list=$("peer-management-services");list.replaceChildren();
+  for(const row of inventory.services||[]){
+    const detail=el("details",undefined,"setup-block"),summary=el("summary",row.unit+" · "+(row.active?"روشن":"خاموش")+" · "+(row.management_enabled?"مدیریت فعال":"فقط مشاهده"));
+    const editor=el("textarea");editor.rows=12;editor.dir="ltr";editor.value=JSON.stringify(row.config||{},null,2);editor.readOnly=!row.management_enabled||!row.editable||row.managed_by_donino;editor.setAttribute("aria-label","تنظیمات سرویس خارج "+row.unit);
+    const output=el("pre");output.setAttribute("role","status");
+    const call=async(action,extra={})=>{
+      if(peerManagementBusy)return;peerManagementBusy=true;output.textContent="در حال اجرا روی سرور خارج…";
+      try{const result=await api("/api/provision/remote-action",{profile_id:profileId,kind:"imported",body:{id:row.id,action,...extra}});
+        output.textContent=action==="logs"?(result.lines||[]).map(l=>l.message).join("\n")||result.reason||"لاگ تازه‌ای نیست":action==="manage"?"اجازهٔ مدیریت تغییر کرد؛ سرویس تغییر نکرد.":"عملیات روی خارج انجام شد.";
+        if(action!=="logs"){const fresh=await api("/api/provision/remote-action",{profile_id:profileId,kind:"inventory",body:{}});renderPeerServices(fresh,profileId);$("peer-management-result").textContent=output.textContent;}
+      }catch(e){output.textContent=e.message;}finally{peerManagementBusy=false;}
+    };
+    const controls=el("div",undefined,"paqet-actions"),manage=el("button",row.management_enabled?"لغو مدیریت این سرویس":"فعال‌کردن مدیریت این سرویس");manage.type="button";manage.disabled=!(row.capabilities?.control??row.editable)&&!row.management_enabled;manage.onclick=()=>call("manage",{enabled:!row.management_enabled});controls.append(manage);
+    for(const [action,label] of [["start","شروع"],["stop","توقف"],["restart","راه‌اندازی مجدد"],["logs","دریافت لاگ"]]){const button=el("button",label);button.type="button";button.disabled=action!=="logs"&&!row.management_enabled;button.onclick=()=>call(action);controls.append(button);}
+    detail.append(summary,controls);
+    if(row.editable&&!row.managed_by_donino){const label=el("label","تغییر تنظیمات می‌تواند ارتباط را قطع کند؛ تغییر طرف مقابل را نیز بررسی کرده‌ام."),confirm=el("input");confirm.type="checkbox";label.prepend(confirm);const save=el("button","ذخیرهٔ تنظیمات روی خارج");save.type="button";save.disabled=true;confirm.onchange=()=>save.disabled=!confirm.checked||!row.management_enabled;save.onclick=()=>{try{call("edit",{revision:row.revision,config:JSON.parse(editor.value),ack_peer_change:confirm.checked});}catch{output.textContent="JSON معتبر وارد کن.";}};detail.append(editor,label,save);}
+    detail.append(output);list.append(detail);
+  }
+  if(!inventory.services?.length)list.append(el("p","سرویس شناخته‌شده‌ای در خارج شناسایی نشد."));
+}
 const setupStageNames={queued:"در صف",preflight:"بررسی اتصال دو سرور","prepare-foreign":"آماده‌سازی خارج","prepare-iran":"آماده‌سازی ایران","activate-foreign":"فعال‌سازی خارج","activate-iran":"فعال‌سازی ایران",verify:"آزمون تمام مسیرها",complete:"پایان نصب","rollback-iran":"بازگشت ایران","rollback-foreign":"بازگشت خارج",failure:"خطای نصب",recovery:"بازیابی پس از راه‌اندازی مجدد"};
 const setupStatusNames={running:"در حال اجرا",succeeded:"نصب موفق",failed:"ناموفق",rollback_failed:"بازگشت نیازمند بررسی",interrupted:"متوقف و بازیابی‌شده"};
 function invalidatePlan(){setupPlan=null;$("setup-review").hidden=true;$("setup-confirm").checked=false;$("setup-start").disabled=true;}
@@ -272,7 +321,7 @@ $("setup-form").addEventListener("input",invalidatePlan);
 $("setup-confirm").onchange=()=>$("setup-start").disabled=!setupPlan||!$("setup-confirm").checked||setupRequest||setupState?.busy;
 $("setup-copy-key").onclick=async()=>{try{if(navigator.clipboard)await navigator.clipboard.writeText($("setup-public-key").value);else{$("setup-public-key").select();if(!document.execCommand("copy"))throw Error();}toast("کلید عمومی کپی شد.");}catch{toast("کلید عمومی را از کادر انتخاب و کپی کن.");}};
 function renderSetup(data){
-  setupState=data;renderDetected(data.inventory,false,data.remote_inventory);const available=data.available;
+  setupState=data;renderPeerManagement(data);renderDetected(data.inventory,false,data.remote_inventory);const available=data.available;
   if(data.paqet_capabilities)initPaqetFields(data.paqet_capabilities);renderPaqet(data.paqet,false);syncNavigation();
   $("setup-status").textContent=available?(data.busy?"نصب در حال اجرا":"آمادهٔ راه‌اندازی"):"نیاز به فعال‌سازی";$("setup-status").className="badge "+(available?"good":"bad");
   $("setup-unavailable").hidden=!!available;$("setup-unavailable").textContent=data.reason||"سرویس نصب خودکار در دسترس نیست.";
@@ -292,7 +341,7 @@ function renderSetup(data){
 }
 async function pollSetup(){if(!csrf||setupPolling||state?.role==="foreign")return;setupPolling=true;const session=csrf;try{const d=await api("/api/provision/state");if(csrf===session)renderSetup(d);}catch(e){if(csrf===session){$("setup-status").textContent="در انتظار ارتباط";$("setup-status").className="badge bad";}}finally{setupPolling=false;}}
 async function setupCall(path,body){if(setupRequest)throw new Error("یک درخواست نصب در حال انجام است؛ منتظر نتیجه بمان.");setupRequest=true;$("connection-save").disabled=true;$("setup-preview").disabled=true;$("setup-start").disabled=true;try{return await api(path,body);}finally{setupRequest=false;if(setupState)renderSetup(setupState);}}
-$("connection-form").onsubmit=async e=>{e.preventDefault();$("connection-result").textContent="در حال تأیید هویت خارج و نصب خودکار کلید SSH…";try{const p=await setupCall("/api/provision/pair",{name:$("connection-name").value.trim(),host:$("connection-host").value.trim(),agent_port:Number($("connection-agent-port").value),code:$("connection-code").value.trim()});$("connection-code").value="";await pollSetup();$("setup-profile").value=p.id;invalidatePlan();$("connection-result").textContent="خارج جفت شد؛ اتصال SSH با هویت تأییدشده آماده است.";}catch(e){$("connection-result").textContent=e.message;}};
+$("connection-form").onsubmit=async e=>{e.preventDefault();$("connection-result").textContent="در حال تأیید هویت خارج و آزمون کانال مدیریت امن…";try{const p=await setupCall("/api/provision/pair",{name:$("connection-name").value.trim(),host:$("connection-host").value.trim(),agent_port:Number($("connection-agent-port").value),code:$("connection-code").value.trim()});$("connection-code").value="";await pollSetup();$("setup-profile").value=p.id;invalidatePlan();$("connection-result").textContent="خارج جفت شد؛ نوشتن و خواندن از کانال HTTPS تأیید شد؛ نیازی به ورود SSH نیست.";}catch(e){$("connection-result").textContent=e.message;}};
 $("manual-connection-form").onsubmit=async e=>{e.preventDefault();try{const p=await setupCall("/api/provision/profiles",{name:$("connection-name").value.trim()||"خارج",host:$("manual-host").value.trim(),port:Number($("connection-port").value),fingerprint:$("connection-pin").value.trim()});await pollSetup();$("setup-profile").value=p.id;invalidatePlan();toast("اتصال قدیمی ثبت شد.");}catch(e){toast(e.message);}};
 $("setup-form").onsubmit=async e=>{e.preventDefault();invalidatePlan();$("setup-error").textContent="";const transports=[...$("setup-transports").querySelectorAll("input:checked")].map(n=>n.value);if(!transports.length){$("setup-error").textContent="حداقل یک پروتکل انتخاب کن.";return;}const services=transports.includes("paqet")&&$("paqet-native-only").checked?[]:[...$("setup-services").children].map(row=>Object.fromEntries([...row.querySelectorAll("input")].map(n=>[n.dataset.field,n.value.trim()])));const spec={profile_id:$("setup-profile").value,iran:$("setup-iran").value.trim(),services,transports,experimental:$("setup-experimental").checked,open_ufw:$("setup-open-ufw").checked,base_port:Number($("setup-base").value),carrier_base:Number($("setup-carrier").value),health_port:Number($("setup-health").value),paqet_port:Number($("setup-paqet").value)};if($("setup-foreign").value.trim())spec.foreign=$("setup-foreign").value.trim();if($("setup-browser").value)spec.browser_port=Number($("setup-browser").value);if(transports.includes("donino-continuum")){spec.continuum_options={recovery_timeout:Number($("continuum-recovery").value),retry_max:Number($("continuum-retry").value),alternate_ports:$("continuum-ports").value.trim()?$("continuum-ports").value.split(",").map(v=>Number(v.trim())):[]};}if(transports.includes("paqet")){spec.paqet_options=gatherPaqet();spec.paqet_keep_secrets=$("paqet-keep").checked;}try{const p=await setupCall("/api/provision/preview",spec);setupPlan=p;$("setup-review-summary").textContent=p.summary.iran+" ⇄ "+p.summary.foreign+" · "+p.summary.transports.join(" + ")+" · "+fa(p.summary.services.length)+" سرویس";$("setup-firewall").replaceChildren(...["iran","foreign"].map(role=>{const n=el("div");n.append(el("strong",role==="iran"?"پورت‌های ورودی ایران":"پورت‌های ورودی خارج"));["tcp","udp"].forEach(proto=>{n.append(el("code",proto.toUpperCase()+": "+(p.summary.firewall[role][proto].join(", ")||"—")));});return n;}));$("setup-review").hidden=false;$("setup-confirm").checked=false;$("setup-review").scrollIntoView({behavior:"smooth",block:"nearest"});}catch(e){$("setup-error").textContent=e.message;}};
 $("setup-start").onclick=async()=>{if(!setupPlan||!$("setup-confirm").checked)return;try{await setupCall("/api/provision/start",{plan_id:setupPlan.id,confirm_replace:true});invalidatePlan();await pollSetup();toast("عملیات نصب شروع شد؛ مراحل روی سرور ادامه پیدا می‌کنند.");}catch(e){$("setup-error").textContent=e.message;toast(e.message);}};

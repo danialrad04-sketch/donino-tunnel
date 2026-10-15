@@ -1,4 +1,4 @@
-"""Disposable systemd nodes: actual HTTP panel -> Unix worker -> SSH installation.
+"""Disposable systemd nodes: panel -> Unix worker -> pinned HTTPS installation.
 
 Run on an isolated Linux CI runner with Docker, never on the user's VPS.
 """
@@ -118,18 +118,24 @@ def main():
             # The origin fixture is a plain child process, so start it AFTER
             # the boot test. A node restart intentionally kills non-unit tasks.
             execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
+            # Reproduce the user's failure: root public-key login is forbidden.
+            # Pairing, editing and complete installation MUST still succeed.
+            execute('foreign','python3','-c',"from pathlib import Path;Path('/etc/ssh/sshd_config.d/00-fixture-no-root.conf').write_text('PermitRootLogin no\\n')")
+            execute('foreign','systemctl','reload','ssh.service')
             code=foreign_api('/api/foreign/code',{})
             try:p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as error:
                 reason=json.loads(error.read()).get('error','unknown pairing failure')
                 raise AssertionError('fixture pairing failed: '+reason) from error
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
-            assert 'restrict ssh-ed25519' in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
+            assert p['management']=='https-v1'
+            assert api('/api/provision/connection',{'profile_id':p['id']})['runtime_match']
+            assert not execute('foreign','python3','-c',"from pathlib import Path;p=Path('/var/lib/donino-foreign/authorized_keys');print(p.read_text() if p.exists() else '')").strip()
             assert 'agent_token' not in json.dumps(api('/api/provision/state'))
             try:api('/api/provision/pair',{'name':'Replay','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as e:assert e.code==400
             else:raise AssertionError('pairing code replay succeeded')
-            report['standalone_panels_and_automatic_ssh_pairing']=True
+            report['standalone_panels_and_pinned_https_pairing_with_root_ssh_disabled']=True
             report['unrelated_operator_ssh_key_preserved']=True
             import runpy
             verify=runpy.run_path(str(BASE/'scripts/test-existing-paqet.py'))['verify']
@@ -342,8 +348,8 @@ def main():
             peer=next(p for p in foreign_state['paired'] if not p['revoked'])
             revoked=foreign_api('/api/foreign/revoke',{'id':peer['id']});assert revoked['revoked']
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
-            assert peer['id'] not in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
-            report['pairing_revocation_removes_only_owned_ssh_key']=True
+            assert peer['id'] not in execute('foreign','python3','-c',"from pathlib import Path;p=Path('/var/lib/donino-foreign/authorized_keys');print(p.read_text() if p.exists() else '')")
+            report['https_revocation_preserves_operator_ssh_keys']=True
             for _ in range(30):
                 revoked_status=foreign_api('/api/status')
                 if not revoked_status['telemetry_fresh']:break
