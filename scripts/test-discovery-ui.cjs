@@ -85,7 +85,8 @@ async function main(){
   await page.waitForFunction(()=>!peerManagementBusy);
   const editor=remote.locator('textarea');const foreignConfig=JSON.parse(await editor.inputValue());
   if(!JSON.stringify(foreignConfig).includes('[redacted]'))throw Error('foreign secrets are not redacted');
-  foreignConfig.log.level='info';await editor.fill(JSON.stringify(foreignConfig,null,2));
+  const newForeignLevel=foreignConfig.log.level==='warn'?'info':'warn';
+  foreignConfig.log.level=newForeignLevel;await editor.fill(JSON.stringify(foreignConfig,null,2));
   await remote.getByRole('checkbox').check();
   const remoteReply=page.waitForResponse(r=>r.url().endsWith('/remote-action')&&r.request().postDataJSON()?.body?.action==='edit');
   await remote.getByRole('button',{name:'ذخیرهٔ تنظیمات روی خارج',exact:true}).click();
@@ -93,7 +94,7 @@ async function main(){
   if(!remoteSaved.ok()||!remoteResult.backup_saved||!remoteResult.restarted)throw Error('foreign edit failed: '+JSON.stringify(remoteResult));
   await page.waitForFunction(()=>!peerManagementBusy);
   const committed=await remote.locator('textarea').inputValue();
-  if(JSON.parse(committed).log.level!=='info'||committed.includes('external-fixture-key-')||committed.includes('external-socks-password'))throw Error('foreign edit was not safely refreshed');
+  if(JSON.parse(committed).log.level!==newForeignLevel||committed.includes('external-fixture-key-')||committed.includes('external-socks-password'))throw Error('foreign edit was not safely refreshed');
   if(errors.length)throw Error(JSON.stringify(errors));
   console.log(JSON.stringify({existing_roles_detected:true,live_logs:true,fresh_signed_health_visible_both_roles:true,opt_in_detach_keeps_running:true,browser_edit_and_restart:true,two_consecutive_saves_with_current_revision:true,https_foreign_edit_from_iran:true,secret_safe_editor:true,mobile_overflow:false,js_errors:errors}));
  }finally{await browser.close();}
