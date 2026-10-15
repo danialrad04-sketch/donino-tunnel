@@ -1,0 +1,479 @@
+{
+  "version": "0.3.0",
+  "date_utc": "2026-10-15",
+  "source_parent": "1322826c2c99692115f2585984f9f42bcb081855",
+  "python": "3.12.14",
+  "unit": {
+    "count": 204,
+    "result": "passed",
+    "command": "python -m unittest discover -s tests -v"
+  },
+  "workspace_ui": {
+    "scope": "Real Chromium with declared fixture APIs; both roles, existing-only and managed-path states",
+    "checks": 592,
+    "distinct_pages": true,
+    "service_subpages": true,
+    "forward_only_health_honest": true,
+    "generic_vendor_logs": true,
+    "drafts_preserved": true,
+    "deep_links_and_history": true,
+    "no_service_mutations": true,
+    "js_errors": []
+  },
+  "responsive_ui": {
+    "scope": "Actual UI in Chromium; declared public API fixture, Android touch and Windows desktop UA; no OS/device or VPS certification",
+    "results": [
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "light",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "iran",
+        "theme": "dark",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 320,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 360,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 390,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 412,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 768,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 844,
+        "mode": "Android touch emulation",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "light",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1024,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1280,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1440,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      },
+      {
+        "role": "foreign",
+        "theme": "dark",
+        "width": 1920,
+        "mode": "Windows desktop UA",
+        "overflow": false,
+        "menu_contrast_aa": true
+      }
+    ],
+    "focus_trap": true,
+    "escape_and_backdrop": true,
+    "resize_unlocks_content": true,
+    "polling_preserves_focus_and_draft": true,
+    "live_log_dialog": true,
+    "advanced_forms_no_overflow": true,
+    "no_service_mutations": true,
+    "js_errors": []
+  },
+  "real_transports_and_mixed_load": {
+    "mtls_front_requires_client_certificate": true,
+    "frp-wss": {
+      "probe_ms": 10.493,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true,
+      "udp_payload_sha256_match": true
+    },
+    "frp-quic": {
+      "probe_ms": 4.159,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true,
+      "udp_payload_sha256_match": true
+    },
+    "backpack-wss": {
+      "probe_ms": 7.857,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true,
+      "udp_payload_sha256_match": true
+    },
+    "backhaul-wss": {
+      "probe_ms": 13.37,
+      "bytes_echoed": 2097152,
+      "binary_payload_sha256_match": true,
+      "half_close_preserved": true,
+      "response_after_upload_eof": true,
+      "udp_payload_sha256_match": true
+    },
+    "mixed_load": {
+      "scope": "loopback echo through real FRP WSS; no VPN backend or WAN load",
+      "concurrent_clients": 50,
+      "tcp_transfers": 100,
+      "udp_associations": 50,
+      "udp_messages": 100,
+      "tcp_bytes_each_direction": 6553600,
+      "udp_payload_bytes": 1200,
+      "wall_seconds": 0.644,
+      "controller_cpu_seconds": 0.361,
+      "controller_max_rss_mib": 84.62,
+      "available_cpu_cores": 1,
+      "all_payloads_match": true
+    },
+    "udp_failover": {
+      "from": "frp-wss",
+      "to": "frp-quic",
+      "same_origin_association": true,
+      "pass": true
+    },
+    "failover": {
+      "from": "frp-wss",
+      "to": "frp-quic",
+      "bytes_echoed": 524288,
+      "pass": true
+    },
+    "elapsed_seconds": 3.04,
+    "scope": "loopback Linux, amd64; no Iran route, raw packets or production load test"
+  },
+  "native_browser": {
+    "gateway_failover_to_real_quic_and_recovery": true,
+    "scope": "Linux amd64 loopback; native Chromium; not an Iran DPI or WAN throughput test",
+    "chromium": "chrome",
+    "concurrent_binary_echo": [
+      {
+        "bytes_each_direction": 4194304,
+        "seconds": 0.82,
+        "sha256_match": true
+      },
+      {
+        "bytes_each_direction": 2097152,
+        "seconds": 0.678,
+        "sha256_match": true
+      }
+    ],
+    "health_probe_ms": 6.87,
+    "half_close_delayed_response": true,
+    "unauthorized_wrong_origin_unknown_target_rejected": true,
+    "browser_crash_closes_stream_and_recovers": true,
+    "max_streams": 32,
+    "flow_window_bytes_per_direction": 524288
+  },
+  "real_engine_panel": {
+    "login": true,
+    "routing_actions": true,
+    "theme_persistence": true,
+    "installer_review": true,
+    "job_progress": true,
+    "mobile_logout": true,
+    "js_errors": []
+  },
+  "packaging": {
+    "standalone_reproduced": true,
+    "shell_syntax": true,
+    "resource_copies_match": true,
+    "web_assets_reproduced": true,
+    "web_plain_bytes": 220215,
+    "web_gzip_bytes": 58676,
+    "web_reduction_percent": 73.4
+  },
+  "limits": [
+    "No user VPS or existing VPN accounts were changed.",
+    "VPN backends must already exist on foreign; presets prepare tunnel mappings only.",
+    "Mixed load is local echo traffic, not a 50-user VPN/WAN capacity certification.",
+    "UI matrix uses declared API fixtures; the real-engine panel test is separate.",
+    "Final real VPS, WAN, games/calls and backend tests are assigned to the operator."
+  ],
+  "ci": "Exact-commit workflow status is linked in the GitHub pull request and release notes.",
+  "python310_portable_runtime": {
+    "version": "3.10.22",
+    "count": 204,
+    "seconds": 60.838,
+    "result": "passed",
+    "packages": "exact bundled portable wheels",
+    "shutdown_regressions": [
+      "cancellation completion race in Mux consumer",
+      "UDP shutdown with replies in flight"
+    ]
+  }
+}

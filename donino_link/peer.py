@@ -30,7 +30,8 @@ SETTINGS = Path('/etc/donino-foreign-agent.json')
 LIVE = Path('/etc/donino-link/current/node.json')
 SSH_DROPIN = Path('/etc/ssh/sshd_config.d/00-donino-pair.conf')
 OBSERVATIONS = Path('/var/lib/donino-link/peer-observations.json')
-PEER_ROUTES=('/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation')
+PEER_ROUTES=('/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation',
+             '/connection','/node-action','/node-imported-action','/install','/install-status')
 
 
 def digest(value):
@@ -75,7 +76,8 @@ async def peer_request(profile, path, body=None, token=None):
             limit=1048576 if path=='/inventory' else 32768
             raw = await response.content.read(limit+1)
             if len(raw) > limit: raise ValueError('peer response too large')
-            if response.status==401:raise ValueError('foreign management permission was revoked; generate a new pairing code')
+            if response.status==401:raise ValueError('Foreign management authentication failed; check the paired source IP or generate a new pairing code.')
+            if response.status==404:raise ValueError('Foreign management agent needs an upgrade on the outside node; SSH fallback was not attempted.')
             try:result=json.loads(raw)
             except ValueError:raise ValueError('foreign agent endpoint did not accept the request') from None
             if response.status >= 400: raise ValueError(result.get('error','peer rejected operation'))
@@ -85,7 +87,7 @@ async def peer_request(profile, path, body=None, token=None):
 
 def ssh_rules(root, pairs):
     """Rebuild only our dedicated key file/drop-in, preserving user key files."""
-    active = [p for p in pairs if not p.get('revoked')]
+    active = [p for p in pairs if not p.get('revoked') and p.get('management') != 'https-v1']
     lines = [f'from="{p["source"]}",restrict {key_fields(p["public_key"])} donino:{p["id"]}' for p in active]
     keys = root/'authorized_keys'
     previous_keys=keys.read_text() if keys.exists() else ''
@@ -128,6 +130,12 @@ class ForeignAgent:
         self.inventory=Inventory(self.root,self.live);self.probe_udp=None;self.probe_udp_lock=asyncio.Lock()
         self.action_busy = False
         self.fingerprint = self.settings['fingerprint']
+        from .management import Management
+        self.management = Management(self)
+
+    def require_pair(self, pair):
+        if not any(p['id'] == pair['id'] and not p.get('revoked') for p in self.pairs()):
+            raise web.HTTPUnauthorized()
 
     def pairs(self): return read_json(self.root/'pairs.json', [])
 
@@ -152,7 +160,9 @@ class ForeignAgent:
                     'agent_port':self.settings['port'], 'single_use':True}
 
     def exchange(self, body, source):
-        strict_fields(body, ['token','public_key','name'], ['token','public_key','name'])
+        strict_fields(body, ['token','public_key','name','management'], ['token','public_key','name'])
+        mode = body.get('management', 'ssh')
+        if mode not in ('ssh', 'https-v1'):raise ValueError('unsupported management protocol')
         key = key_fields(body['public_key']); source = str(ipaddress.ip_address(source))
         if not isinstance(body['name'], str) or not 1 <= len(body['name']) <= 64: raise ValueError('invalid peer name')
         if not isinstance(body['token'], str) or len(body['token']) > 100: raise ValueError('invalid pairing token')
@@ -171,14 +181,19 @@ class ForeignAgent:
             token = secrets.token_urlsafe(32)
             record = {'id':secrets.token_hex(16), 'name':body['name'], 'source':source, 'public_key':key,
                       'created':now, 'token_digest':digest(token), 'revoked':False}
+            record['management'] = mode
             # Consume before side effects; a lost response needs a fresh code.
             (self.root/'pending.json').unlink(missing_ok=True)
             pairs=[p for p in pairs if not p.get('revoked')]+[p for p in pairs if p.get('revoked')][-20:]
             pairs.append(record); atomic_json(self.root/'pairs.json',pairs)
-            try: self.ssh_writer(self.root,pairs)
+            try:
+                if mode == 'ssh':self.ssh_writer(self.root,pairs)
             except Exception:
                 record['revoked']=True; atomic_json(self.root/'pairs.json',pairs)
                 raise
+            if mode == 'https-v1':
+                return {'pair_id':record['id'], 'agent_token':token, 'management':mode,
+                        'panel_listen':load_config(self.live)['panel']['listen']}
             host_key = subprocess.check_output(['ssh-keygen','-lf','/etc/ssh/ssh_host_ed25519_key.pub'],text=True,timeout=5).split()[1]
             return {'pair_id':record['id'], 'agent_token':token, 'ssh_fingerprint':host_key,
                     'ssh_family':'inet' if ipaddress.ip_address(source).version==4 else 'inet6',
@@ -202,7 +217,7 @@ class ForeignAgent:
             pair['revoked']=True; atomic_json(self.root/'pairs.json',pairs)
             if read_json(self.root/'telemetry.json',{}).get('peer_id')==identity:
                 self.publish_telemetry({})
-            self.ssh_writer(self.root,pairs)
+            if pair.get('management') != 'https-v1':self.ssh_writer(self.root,pairs)
             return {'revoked':True,'tunnels_stopped':False}
 
     def telemetry(self, pair, body):
@@ -222,7 +237,8 @@ class ForeignAgent:
             latency = row.get('latency_ms')
             if latency is not None and (isinstance(latency,bool) or not isinstance(latency,(int,float)) or not 0<=latency<=60000): raise ValueError('invalid latency')
             services = row.get('services',{})
-            if not isinstance(services,dict) or set(services)-set(config.get('targets',{})) or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
+            observed_services = set(config.get('targets', {})) | set(config.get('udp_relays', {}))
+            if not isinstance(services,dict) or set(services)-observed_services or not all(isinstance(v,bool) for v in services.values()): raise ValueError('invalid service observations')
             clean.append({'path':row['path'],'ok':row['ok'],'latency_ms':latency,'services':services})
             if ('udp_ok' in row or 'udp_latency_ms' in row) and (row['path']!='paqet' or 'udp_ok' not in row):raise ValueError('UDP observations belong to Paqet')
             if row['path']=='paqet' and 'udp_ok' in row:
@@ -253,13 +269,14 @@ class ForeignAgent:
         strict_fields(body,['job_id'],['job_id'])
         with self.lock:
             lease=self.lease()
+            if self.action_busy:raise ValueError('remote operation is still running; keep its lease')
             if lease and lease['peer_id']==pair['id'] and lease['job_id']==body['job_id']:(self.root/'lease.json').unlink(missing_ok=True)
         return {'released':True}
 
     def state(self):
         from .paqet import status
         from .adapters import paqet_overview
-        pairs=[{k:p[k] for k in ['id','name','source','created','revoked']} for p in self.pairs()]
+        pairs=[{k:p[k] for k in ['id','name','source','created','revoked','management'] if k in p} for p in self.pairs()]
         telemetry=read_json(self.root/'telemetry.json',None)
         if telemetry and not any(p['id']==telemetry.get('peer_id') and not p['revoked'] for p in pairs):telemetry=None
         for identity,observation in list(self.inventory.health.items()):
@@ -270,7 +287,7 @@ class ForeignAgent:
                 'pending_expires':read_json(self.root/'pending.json',{}).get('expires'),
                 'telemetry':telemetry,'inventory':inventory,'paqet':paqet_overview(status(self.live.parent),inventory)}
 
-    async def imported_action(self,body):
+    async def imported_action(self,body,pair=None):
         strict_fields(body,['id','action','enabled','cursor','revision','config','ack_peer_change'],['id','action'])
         op=body['action']
         if op=='logs':return await asyncio.to_thread(self.inventory.logs,body['id'],body.get('cursor'))
@@ -280,6 +297,7 @@ class ForeignAgent:
             row=await asyncio.to_thread(self.inventory.select,body['id'])
             return next((r for r in self.inventory.public()['services'] if r['id']==row['id']),{}).get('health') or {'tcp_ok':None,'udp_ok':None,'reason':'Run the paired Iran round-trip test; local process state is not end-to-end health.'}
         with self.lock:
+            if pair is not None:self.require_pair(pair)
             if self.action_busy or self.lease():raise ValueError('node is busy installing or controlling a service')
             self.action_busy=True
         try:
@@ -336,7 +354,7 @@ class ForeignAgent:
             self.inventory.record_health(row['id'],clean)
         return {'accepted':True}
 
-    async def action(self, body):
+    async def action(self, body,pair=None):
         strict_fields(body,['unit','action'],['unit','action'])
         from .paqet import UNIT,DIAGNOSTICS,diagnostic
         if body['action'] not in ('start','stop','restart','test',*DIAGNOSTICS): raise ValueError('invalid unit action')
@@ -349,6 +367,7 @@ class ForeignAgent:
         if body['unit']=='donino-link.service' and body['action']=='stop':
             raise ValueError('the panel and health service cannot stop itself; stop the carrier units instead')
         with self.lock:
+            if pair is not None:self.require_pair(pair)
             if self.action_busy or self.lease(): raise ValueError('node is busy installing or controlling a service')
             self.action_busy=True
             record={'id':secrets.token_hex(16),'unit':body['unit'],'action':body['action'],'created':time.time(),'status':'running'}
@@ -387,15 +406,25 @@ def application(agent, network=False):
         try:return await handler(request)
         except (ValueError,KeyError,TypeError) as error:return web.json_response({'error':str(error) if isinstance(error,ValueError) else 'invalid request'},status=400)
         except (OSError,subprocess.SubprocessError):return web.json_response({'error':'node operation failed; check the private service journal'},status=503)
-    app=web.Application(client_max_size=65536,middlewares=[errors])
+    app=web.Application(client_max_size=2*1024*1024 if network else 65536,middlewares=[errors])
     if network:
         async def dispatch(request):
             source=request.remote
-            body=await request.json()
-            if request.path=='/exchange': result=await asyncio.to_thread(agent.exchange,body,source)
+            if request.path=='/exchange':
+                if request.content_length and request.content_length>65536:raise web.HTTPRequestEntityTooLarge(max_size=65536,actual_size=request.content_length)
+                body=await request.json()
+                result=await asyncio.to_thread(agent.exchange,body,source)
             else:
                 pair=agent.authenticate(request.headers.get('Authorization',''),source)
-                if request.path=='/inventory':result=await asyncio.to_thread(agent.inventory.scan,True)
+                body=await request.json()
+                if request.path=='/connection':result=await asyncio.to_thread(agent.management.connection,body)
+                elif request.path=='/install':result=await agent.management.install(pair,body)
+                elif request.path=='/install-status':result=agent.management.status(pair,body)
+                elif request.path in ('/node-action','/node-imported-action'):
+                    # Recheck after authentication and before the mutation lock.
+                    with agent.lock:agent.require_pair(pair)
+                    result=await (agent.action(body,pair) if request.path=='/node-action' else agent.imported_action(body,pair))
+                elif request.path=='/inventory':result=await asyncio.to_thread(agent.inventory.scan,True)
                 elif request.path=='/external-health':result=await agent.external_health(body)
                 elif request.path=='/external-observation':result=await asyncio.to_thread(agent.external_observation,pair,body)
                 elif request.path=='/telemetry': result=await asyncio.to_thread(agent.telemetry,pair,body)
@@ -425,8 +454,11 @@ def initialize(port=9444):
         cert.chmod(0o600);key.chmod(0o600)
     der=ssl.PEM_cert_to_DER_cert(cert.read_text())
     cfg={'port':integer(port,1024,65535,'agent port'),'ssh_port':22,'fingerprint':hashlib.sha256(der).hexdigest()}
-    output=subprocess.check_output(['/usr/sbin/sshd','-T'],text=True,timeout=10)
-    cfg['ssh_port']=int(next(line.split()[1] for line in output.splitlines() if line.startswith('port ')))
+    try:
+        output=subprocess.check_output(['/usr/sbin/sshd','-T'],text=True,timeout=10,stderr=subprocess.DEVNULL)
+        cfg['ssh_port']=int(next(line.split()[1] for line in output.splitlines() if line.startswith('port ')))
+    except (OSError,subprocess.SubprocessError,ValueError,StopIteration):
+        pass  # Optional legacy SSH metadata must not block HTTPS management.
     atomic_json(SETTINGS,cfg)
     return cfg
 
@@ -436,8 +468,8 @@ def enable_agent():
     if not SETTINGS.exists(): initialize()
     text='''[Unit]
 Description=Donino foreign pairing and service agent
-After=network-online.target ssh.service
-Wants=network-online.target ssh.service
+After=network-online.target
+Wants=network-online.target
 [Service]
 Type=simple
 User=root
@@ -468,7 +500,12 @@ async def serve_agent():
     agent=ForeignAgent()
     await asyncio.to_thread(agent.inventory.recover)
     # Repair a crash between recording a pairing/revocation and SSH reload.
-    await asyncio.to_thread(agent.ssh_writer,agent.root,agent.pairs())
+    # HTTPS-only pairing must also work on hosts without a usable SSH daemon.
+    if SSH_DROPIN.exists() or any(p.get('management') != 'https-v1' for p in agent.pairs()):
+        try:await asyncio.to_thread(agent.ssh_writer,agent.root,agent.pairs())
+        except (OSError,subprocess.SubprocessError):
+            import logging
+            logging.getLogger(__name__).warning('Legacy SSH authorization repair failed; pinned HTTPS management remains available. Inspect sshd locally if legacy SSH is needed.')
     records=read_json(ROOT/'actions.json',[])
     for row in records:
         if row['status']=='running':row.update(status='interrupted',error='agent restarted during the operation; inspect systemd before retrying')

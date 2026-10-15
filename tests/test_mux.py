@@ -131,6 +131,33 @@ class MuxLiveTests(unittest.IsolatedAsyncioTestCase):
             await ws.send_bytes(packet(OPEN,3,b'health'));self.assertEqual(unpack((await ws.receive()).data),(READY,3,b''))
         finally:await ws.close();await self.http.close()
 
+    async def test_reset_retires_stream_when_completed_send_consumes_cancellation(self):
+        ws=await self.raw();entered=asyncio.Event();consumer=[]
+        try:
+            await ws.send_bytes(packet(OPEN,1,b'app'));await ws.receive()
+            session=next(iter(self.foreign.sessions));original=session.send
+            async def race(kind,sid,body=b''):
+                await original(kind,sid,body)
+                if kind==UPDATE:
+                    consumer.append(asyncio.current_task());entered.set()
+                    try:await asyncio.Event().wait()
+                    except asyncio.CancelledError:pass  # Python 3.10 wait_for completion race.
+            session.send=race
+            await ws.send_bytes(packet(DATA,1,b'payload'))
+            await asyncio.wait_for(entered.wait(),2)
+            await ws.send_bytes(packet(RESET,1))
+            for _ in range(100):
+                if not session.streams:break
+                await asyncio.sleep(.01)
+            retired=not session.streams
+            # Ensure a failing implementation can still be torn down cleanly.
+            for task in consumer:
+                if not task.done():task.cancel()
+            await asyncio.gather(*consumer,return_exceptions=True)
+            self.assertTrue(retired,'RESET left a consumer waiting after cancellation was consumed')
+            self.assertEqual(self.foreign.stats.active,0)
+        finally:await ws.close();await self.http.close()
+
     async def test_stream_ids_cannot_be_reused(self):
         ws=await self.raw()
         try:

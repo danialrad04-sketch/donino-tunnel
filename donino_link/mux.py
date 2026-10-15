@@ -98,7 +98,9 @@ class Stream:
             self.session.count(self,'read',len(block))
 
     async def consume(self):
-        while True:
+        # Python 3.10 wait_for can consume cancellation when a send completes
+        # in the same loop turn. A retired stream must not wait for more input.
+        while not self.closed:
             block=await self.incoming.get()
             if block is None:
                 if not self.writer.can_write_eof():raise ValueError('origin does not support half-close')

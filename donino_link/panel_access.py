@@ -17,8 +17,9 @@ def configure_panel(path,listen,http=False,cert=None,key=None,public_host=None):
     if bool(cert)!=bool(key):
         raise ValueError('provide both --cert and --key')
     port=endpoint(listen)[1]
-    occupied=[s['listen'] for s in config.get('services',[])]
+    occupied=[s['listen'] for s in config.get('services',[]) if s.get('protocol','tcp')=='tcp']
     if config['role']=='foreign':occupied.extend([config['health_listen'],*config.get('targets',{}).values()])
+    if config['role']=='foreign':occupied.extend(r['listen'] for r in config.get('udp_relays',{}).values())
     for item in config.get('paths',[]):
         occupied.extend([item['health'],*item['backends'].values()])
     if port in [endpoint(address)[1] for address in occupied]:

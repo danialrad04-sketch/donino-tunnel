@@ -44,9 +44,34 @@ class Gateway:
         self.active, self.accepted, self.rejected, self.failovers = 0, 0, 0, 0
         self.started = time.time()
         self.last_path = None
-        self.policy = config["policy"]
+        from .policy import validate
+        self.policy = validate({**config['policy'], **store.get('policy', {})})
         self.adaptive = store.get('adaptive',False) is True
         self.router = AdaptiveRouter(self.policy)
+        self.udp_listeners = []
+        self.stopping = False
+        self._memory_checked = 0
+        self._memory_available = None
+
+    def admission_reason(self):
+        if time.monotonic() - self._memory_checked > 1:
+            stats = host_stats()
+            self._memory_available = stats.get('memory_available')
+            self._memory_checked = time.monotonic()
+        if self._memory_available is not None and self._memory_available < self.policy.get('memory_reserve_mb', 64) * 1024**2:
+            return 'memory-pressure'
+        return None
+
+    def configure(self, values):
+        from .policy import validate
+        updated = validate({**self.policy, **values})
+        self.store.set('policy', updated)
+        self.policy.clear()
+        self.policy.update(updated)
+        for listener in self.udp_listeners:
+            listener.idle = updated['udp_idle_timeout']
+        self.store.event('settings', {'fields': sorted(values)})
+        return dict(self.policy)
 
     def candidates(self, service=None):
         paths = [p for p in self.paths.values() if p.mode == "enabled" and p.healthy and
@@ -86,6 +111,14 @@ class Gateway:
             path.quality.probe(latency,time.monotonic())
             path.latency_ms = latency if path.latency_ms is None else 0.3*latency + 0.7*path.latency_ms
             path.remote = remote
+            for service in self.config['services']:
+                if service.get('protocol') != 'udp':continue
+                from .datagram import probe as datagram_probe
+                try:
+                    await datagram_probe(path.config['backends'][service['id']], self.config['health_key'], service['id'], self.policy['probe_timeout'])
+                    remote.setdefault('services', {})[service['id']] = True
+                except (OSError, ValueError, asyncio.TimeoutError):
+                    remote.setdefault('services', {})[service['id']] = False
             if path.config.get('udp_health'):
                 from .udp_health import probe as udp_probe
                 try:
@@ -116,9 +149,16 @@ class Gateway:
             await asyncio.sleep(self.policy["probe_interval"])
 
     async def start(self):
+        self.stopping = False
         # Start all listeners transactionally: no partial startup on a port conflict.
         try:
             for service in self.config["services"]:
+                if service.get('protocol', 'tcp') == 'udp':
+                    from .datagram import DatagramListener
+                    listener = DatagramListener(self, service)
+                    self.udp_listeners.append(listener)
+                    await listener.start()
+                    continue
                 server = await asyncio.start_server(lambda r,w,s=service: self.handle(r,w,s),
                                                      *endpoint(service["listen"]))
                 self.servers.append(server)
@@ -128,6 +168,9 @@ class Gateway:
         self.tasks.append(asyncio.create_task(self.monitor()))
 
     async def stop(self):
+        self.stopping = True
+        await asyncio.gather(*(l.stop() for l in self.udp_listeners))
+        self.udp_listeners.clear()
         for server in self.servers:
             server.close()
         await asyncio.gather(*(s.wait_closed() for s in self.servers))
@@ -146,7 +189,7 @@ class Gateway:
         counted = False
         pumps = []
         try:
-            if self.paused or self.active >= self.policy["max_connections"]:
+            if self.stopping or self.paused or self.active >= self.policy["max_connections"] or self.admission_reason():
                 self.rejected += 1
                 return
             self.active += 1
@@ -156,6 +199,8 @@ class Gateway:
                     upstream_reader, upstream = await asyncio.wait_for(
                         asyncio.open_connection(*endpoint(path.config["backends"][service["id"]])),
                         self.policy["connect_timeout"])
+                    if self.stopping:
+                        return
                     chosen = path
                     break
                 except (OSError, asyncio.TimeoutError):
@@ -241,4 +286,11 @@ class Gateway:
                 "selected":candidates[0].config["id"] if candidates else None,
                 "routing_strategy":'adaptive' if self.adaptive else 'static',
                 "host":host_stats(), "paths":paths,
-                "services":self.config["services"], "events":self.store.events()}
+                "services":self.config["services"], "events":self.store.events(),
+                "udp": [l.snapshot() for l in self.udp_listeners],
+                "admission": {'reason': self.admission_reason(), 'max_connections': self.policy['max_connections'],
+                              'tcp_full': self.active >= self.policy['max_connections'],
+                              'udp_full': sum(len(l.flows) for l in self.udp_listeners) >= self.policy.get('max_udp_associations',128),
+                              'max_udp_associations': self.policy.get('max_udp_associations',128),
+                              'memory_reserve_mb': self.policy.get('memory_reserve_mb',64)},
+                "policy": dict(self.policy)}

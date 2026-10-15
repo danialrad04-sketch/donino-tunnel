@@ -140,6 +140,19 @@ class PeerTests(unittest.IsolatedAsyncioTestCase):
             for invalid in [{**row,'udp_ok':'yes'},{**row,'udp_latency_ms':True},{**row,'path':'frp-wss'}]:
                 with self.assertRaises(ValueError):self.agent.telemetry(pair,{**body,'probes':[invalid]})
 
+    async def test_udp_relay_observations_reach_the_foreign_panel_without_unregistered_targets(self):
+        config=load_config(self.live)
+        config['udp_relays']={'wireguard':{'listen':'127.0.0.1:32001','target':'127.0.0.1:51821'}}
+        atomic_json(self.live,config)
+        result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
+        row={'path':'frp-wss','ok':True,'services':{'app':True,'wireguard':True}}
+        with patch('donino_link.peer.OBSERVATIONS',self.root/'observations.json'),patch('grp.getgrnam') as group,patch('donino_link.peer.os.chown'):
+            group.return_value.gr_gid=0
+            self.agent.telemetry(pair,{'config_hash':digest('1'*64),'probes':[row]})
+            self.assertTrue(self.agent.state()['telemetry']['probes'][0]['services']['wireguard'])
+            with self.assertRaisesRegex(ValueError,'service observations'):
+                self.agent.telemetry(pair,{'config_hash':digest('1'*64),'probes':[{**row,'services':{'other-udp':True}}]})
+
     async def test_revocation_invalidates_health_and_rejects_inflight_publication(self):
         result=self.exchange();pair=self.agent.authenticate('Bearer '+result['agent_token'],'127.0.0.1')
         observations=self.root/'observations.json'

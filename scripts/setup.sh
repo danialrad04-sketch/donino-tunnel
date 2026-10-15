@@ -56,14 +56,8 @@ donino_platform
 [[ -d /run/systemd/system ]] || { echo 'A running systemd is required.' >&2; exit 1; }
 donino_apt update -q
 packages=(python3 python3-venv python3-pip openssl ca-certificates openssh-client)
-[[ "$role" != foreign ]] || packages+=(openssh-server)
 donino_apt install -y -q --no-install-recommends "${packages[@]}"
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python 3.10+ required"'
-if [[ "$role" == foreign ]]; then
-  ssh-keygen -A
-  /usr/sbin/sshd -t
-  systemctl enable --now ssh.service
-fi
 stage=$(mktemp -d /var/tmp/donino-setup-XXXXXX)
 trap 'rm -rf -- "$stage"' EXIT
 cp -a "$source_dir/donino_link" "$source_dir/pyproject.toml" "$stage/"
@@ -71,7 +65,7 @@ source "$source_dir/donino_link/resources/python-runtime.sh"
 donino_python_runtime "$stage"
 "$stage/venv/bin/donino-link" init-node --role "$role" --address "$address" "${forward[@]}"
 services=(donino-link.service)
-if [[ "$role" == iran ]]; then services+=(donino-control.service);else services+=(donino-foreign-agent.service ssh.service);fi
+if [[ "$role" == iran ]]; then services+=(donino-control.service);else services+=(donino-foreign-agent.service);fi
 for service in "${services[@]}"; do
   systemctl is-active --quiet "$service"
   systemctl is-enabled --quiet "$service"

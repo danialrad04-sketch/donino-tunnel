@@ -71,10 +71,32 @@ async function main(){
   }
   // Force a new engine event, then observe cursor-based live log updates.
   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));const before=await page.locator('#detected-logs').textContent();
-  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/overview'));await page.locator('#detected-restart').click();await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));
+  await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/overview'));await clickAction(page,'restart');await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));
   await page.waitForFunction(previous=>document.querySelector('#detected-logs').textContent!==previous,before,{timeout:20000});
+  // Manage the foreign fixture through Iran's pinned HTTPS channel, with root
+  // SSH disabled by the parent fixture. Await both mutation and fresh inventory.
+  await page.evaluate(()=>navigateWorkspace('#pairing'));
+  await page.locator('#peer-management-check').click();
+  await page.waitForFunction(()=>!document.querySelector('#peer-management-check').disabled&&document.querySelector('#peer-management-result').textContent.includes('نسخه‌های دو طرف یکسان است'));
+  const remote=page.locator('#peer-management-services details').filter({hasText:'vendor-exit.service'});
+  await remote.locator('summary').click();
+  await remote.getByRole('button',{name:'دریافت لاگ',exact:true}).click();
+  await remote.locator('pre').filter({hasText:/./}).waitFor();
+  await page.waitForFunction(()=>!peerManagementBusy);
+  const editor=remote.locator('textarea');const foreignConfig=JSON.parse(await editor.inputValue());
+  if(!JSON.stringify(foreignConfig).includes('[redacted]'))throw Error('foreign secrets are not redacted');
+  const newForeignLevel=foreignConfig.log.level==='warn'?'info':'warn';
+  foreignConfig.log.level=newForeignLevel;await editor.fill(JSON.stringify(foreignConfig,null,2));
+  await remote.getByRole('checkbox').check();
+  const remoteReply=page.waitForResponse(r=>r.url().endsWith('/remote-action')&&r.request().postDataJSON()?.body?.action==='edit');
+  await remote.getByRole('button',{name:'ذخیرهٔ تنظیمات روی خارج',exact:true}).click();
+  const remoteSaved=await remoteReply;const remoteResult=await remoteSaved.json();
+  if(!remoteSaved.ok()||!remoteResult.backup_saved||!remoteResult.restarted)throw Error('foreign edit failed: '+JSON.stringify(remoteResult));
+  await page.waitForFunction(()=>!peerManagementBusy);
+  const committed=await remote.locator('textarea').inputValue();
+  if(JSON.parse(committed).log.level!==newForeignLevel||committed.includes('external-fixture-key-')||committed.includes('external-socks-password'))throw Error('foreign edit was not safely refreshed');
   if(errors.length)throw Error(JSON.stringify(errors));
-  console.log(JSON.stringify({existing_roles_detected:true,live_logs:true,fresh_signed_health_visible_both_roles:true,opt_in_detach_keeps_running:true,browser_edit_and_restart:true,two_consecutive_saves_with_current_revision:true,secret_safe_editor:true,mobile_overflow:false,js_errors:errors}));
+  console.log(JSON.stringify({existing_roles_detected:true,live_logs:true,fresh_signed_health_visible_both_roles:true,opt_in_detach_keeps_running:true,browser_edit_and_restart:true,two_consecutive_saves_with_current_revision:true,https_foreign_edit_from_iran:true,secret_safe_editor:true,mobile_overflow:false,js_errors:errors}));
  }finally{await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

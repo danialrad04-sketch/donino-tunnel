@@ -29,7 +29,7 @@ def stable_auth(role, password=None, old_panel=None):
 
 
 def preserve_foreign_panel(node):
-    """SSH deployments retain the foreign panel independently of tunnel bundles."""
+    """Deployments retain the foreign panel independently of tunnel bundles."""
     node=Path(node);cfg=read_json(node/'node.json');install=read_json(node/'install.json')
     if cfg['role']!='foreign' or 'panel' in cfg or not LIVE.exists():return
     previous=load_config(LIVE)

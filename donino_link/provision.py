@@ -120,6 +120,10 @@ class Coordinator:
     def ssh(self, profile, command, data=None, timeout=1800):
         return self.runner.run(self.worker.ssh_args(profile) + [command], data, timeout)
 
+    def remote(self, profile, job, operation, **extra):
+        from .management import remote_operation
+        return remote_operation(profile, job['id'], operation, **extra)
+
     def execute(self, job):
         w, r = self.worker, self.runner
         directory = w.root/'plans'/job['plan_id']
@@ -133,11 +137,17 @@ class Coordinator:
         job['release'] = release
         w.save_job(job)
         leased=False
+        agent_channel=bool(profile.get('agent_token'))
         try:
             w.event(job, 'preflight', 'running', 'Checking both servers before making changes')
-            self.ssh(profile, "test \"$(id -u)\" -eq 0 && test -d /run/systemd/system && command -v python3 && command -v apt-get", timeout=30)
+            if agent_channel:
+                connection=w.check_connection({'profile_id':profile['id']})
+                if not connection['ready']:raise ValueError('Foreign root agent or systemd prerequisites are not ready')
+                if not connection['runtime_match']:raise ValueError('Upgrade BOTH nodes to the same runtime before installing')
+            else:
+                self.ssh(profile, "test \"$(id -u)\" -eq 0 && test -d /run/systemd/system && command -v python3 && command -v apt-get", timeout=30)
             r.run(['test', '-d', '/run/systemd/system'], timeout=5)
-            w.event(job, 'preflight', 'done', 'SSH pin and root access verified')
+            w.event(job, 'preflight', 'done', 'Pinned HTTPS identity and management write/read verified' if agent_channel else 'SSH pin and root access verified (manual legacy connection)')
             if profile.get('agent_token'):
                 from .peer import peer_request
                 asyncio.run(peer_request(profile,'/lease',{'job_id':job['id']}));leased=True
@@ -146,8 +156,13 @@ class Coordinator:
                 w.event(job, 'prepare-'+role, 'running', 'Preparing prerequisites and verified engine binaries')
                 if leased:asyncio.run(peer_request(profile,'/lease',{'job_id':job['id']}))
                 payload = stage/role
-                build_payload(directory/role, payload)
-                if role == 'foreign':
+                if role == 'foreign' and agent_channel:
+                    from .management import node_files,runtime_digest
+                    spec={k:v for k,v in meta['spec'].items() if k not in ('profile_id','paqet_keep_secrets')}
+                    spec['panel_port']=endpoint(load_config(w.live)['panel']['listen'])[1]
+                    self.remote(profile,job,'prepare',spec=spec,files=node_files(directory/'foreign'),runtime_digest=runtime_digest())
+                elif role == 'foreign':
+                    build_payload(directory/role, payload)
                     archive = stage/'foreign.tar.gz'
                     with tarfile.open(archive, 'w:gz') as tar:
                         for item in payload.iterdir(): tar.add(item, arcname=item.name)
@@ -156,6 +171,7 @@ class Coordinator:
                         self.ssh(profile, f'tar -xzf - -C {remote}', f.read())
                     self.ssh(profile, f'bash {remote}/scripts/install-node.sh {remote} --prepare control-{job["id"]}')
                 else:
+                    build_payload(directory/role, payload)
                     r.run(['bash', str(payload/'scripts/install-node.sh'), str(payload), '--prepare', 'control-'+job['id']])
                 job['prepared'].append(role); w.save_job(job)
                 w.event(job, 'prepare-'+role, 'done', 'Prepared; active installation has not switched')
@@ -165,7 +181,8 @@ class Coordinator:
                 job['activating'] = role; w.save_job(job)
                 w.event(job, 'activate-'+role, 'running', 'Activating staged units and configuration')
                 if role == 'foreign':
-                    self.ssh(profile, f'bash {release}/scripts/install-node.sh {release} --activate control-{job["id"]}')
+                    if agent_channel:self.remote(profile,job,'activate')
+                    else:self.ssh(profile, f'bash {release}/scripts/install-node.sh {release} --activate control-{job["id"]}')
                 else:
                     r.run(['bash', release+'/scripts/install-node.sh', release, '--activate', 'control-'+job['id']])
                 job['activated'].append(role); job['activating'] = None; w.save_job(job)
@@ -184,15 +201,16 @@ class Coordinator:
                     break
                 time.sleep(2)
             else:
-                raise RuntimeError('Some selected paths or destination TCP services failed. Check the listed provider firewall ports and origin services.')
+                raise RuntimeError('Some selected paths, TCP destinations or UDP relays failed. Check the listed provider firewall ports and origin services.')
             job['probes'] = rows
-            w.event(job, 'verify', 'done', 'All selected paths and destination TCP services passed')
+            w.event(job, 'verify', 'done', 'All selected paths, TCP destinations and UDP relays passed')
             job['status'] = 'succeeded'
             w.event(job, 'complete', 'done', 'Installation complete; sign in again after the panel restart')
             for role in ['foreign','iran']:
                 try:
                     command = ['/opt/donino-link/current/venv/bin/python','-m','donino_link.host_firewall','retire-previous','--release',release]
                     if role=='iran':r.run(command,timeout=30)
+                    elif agent_channel:self.remote(profile,job,'retire')
                     else:self.ssh(profile,' '.join(command),timeout=30)
                 except Exception:
                     w.event(job,'firewall-cleanup-'+role,'warning','Installation succeeded; old owned UFW rules need manual cleanup')
@@ -202,7 +220,9 @@ class Coordinator:
             if job['status'] != 'rollback_failed': job['status'] = 'failed'
             w.event(job, 'failure', 'failed', job['error'])
         finally:
-            try: self.ssh(profile, f'rm -rf -- {remote}', timeout=20)
+            try:
+                if agent_channel and leased:self.remote(profile,job,'cleanup')
+                elif not agent_channel:self.ssh(profile, f'rm -rf -- {remote}', timeout=20)
             except Exception: pass
             if leased:
                 try:asyncio.run(peer_request(profile,'/release',{'job_id':job['id']}))
@@ -220,6 +240,7 @@ class Coordinator:
             try:
                 command = ['bash', job['release']+'/scripts/rollback.sh', job['release'], '--if-current']
                 if role == 'iran': self.runner.run(command)
+                elif profile.get('agent_token'):self.remote(profile,job,'rollback')
                 else: self.ssh(profile, ' '.join(command))
                 self.worker.event(job, 'rollback-'+role, 'done', 'Previous release restored or already active')
             except Exception:
@@ -236,6 +257,7 @@ class Worker:
         self.allow_private = allow_private
         from .discovery import Inventory
         self.inventory=Inventory(self.root,self.live);self.remote_inventory=None
+        self.connections={}
         self.lock = threading.RLock()
         self.busy = False
         self.task = None
@@ -272,7 +294,8 @@ class Worker:
         with self.lock:
             jobs = [read_json(p) for p in (self.root/'jobs').glob('*/job.json')]
         return {'available': True, 'public_key': self.identity.with_suffix('.pub').read_text().strip(),
-                'profiles': [{k:p[k] for k in ['id','name','host','port','fingerprint','agent_port','panel_listen','pair_id'] if k in p}
+                'connections':dict(self.connections),
+                'profiles': [{k:p[k] for k in ['id','name','host','port','fingerprint','agent_port','panel_listen','pair_id','management'] if k in p}
                              for p in read_json(self.root/'profiles.json', [])],
                 'transports': [{'id': t, 'experimental': t in EXPERIMENTAL} for t in TRANSPORTS],
                 'jobs': sorted(jobs, key=lambda j: j['created'], reverse=True)[:20], 'busy': self.busy,
@@ -365,23 +388,58 @@ class Worker:
         if not isinstance(body['name'],str) or not 1<=len(body['name'])<=64:raise ValueError('invalid connection name')
         pin,token=split_code(body['code'])
         peer={'host':host,'agent_port':port,'agent_fingerprint':pin}
-        result=asyncio.run(peer_request(peer,'/exchange',{'token':token,'public_key':self.identity.with_suffix('.pub').read_text().strip(),'name':body['name']}))
+        result=asyncio.run(peer_request(peer,'/exchange',{'token':token,'public_key':self.identity.with_suffix('.pub').read_text().strip(),'name':body['name'],'management':'https-v1'}))
         try:
-            strict_fields(result,['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'],['pair_id','agent_token','ssh_fingerprint','ssh_port','panel_listen','ssh_family'])
-            integer(result['ssh_port'],1,65535,'SSH port');endpoint(result['panel_listen'])
+            strict_fields(result,['pair_id','agent_token','management','panel_listen'],['pair_id','agent_token','management','panel_listen'])
+            if result['management']!='https-v1':raise ValueError('Upgrade the foreign agent to pinned HTTPS management')
+            endpoint(result['panel_listen'])
             if not isinstance(result['pair_id'],str) or not SAFE_ID.fullmatch(result['pair_id']) or not isinstance(result['agent_token'],str) or not re.fullmatch('[A-Za-z0-9_-]{43}',result['agent_token']):raise ValueError('invalid pairing response')
-            profile=self.add_profile({'name':body['name'],'host':host,'port':result['ssh_port'],'fingerprint':result['ssh_fingerprint'],'family':result['ssh_family'],'key_type':'ed25519'})
+            profile={'id':secrets.token_hex(16),'name':body['name'],'host':host,'management':'https-v1',
+                     'agent_port':port,'agent_fingerprint':pin,'agent_token':result['agent_token'],
+                     'pair_id':result['pair_id'],'panel_listen':result['panel_listen']}
+            self.check_profile(profile)
             with self.lock:
+                if self.busy:raise ValueError('installation already running')
                 profiles=read_json(self.root/'profiles.json',[])
-                for p in profiles:
-                    if p['id']==profile['id']:
-                        p.update(agent_port=port,agent_fingerprint=pin,agent_token=result['agent_token'],pair_id=result['pair_id'],panel_listen=result['panel_listen'])
+                if len(profiles)>=20:raise ValueError('maximum 20 connections')
+                profiles.append(profile)
                 atomic_json(self.root/'profiles.json',profiles)
-            return {k:profile[k] for k in ['id','name','host','port','fingerprint']}
+            return {k:profile[k] for k in ['id','name','host','management']}
         except Exception:
             try:asyncio.run(peer_request(peer,'/revoke-self',{},token=result['agent_token']))
             except Exception:pass
             raise
+
+    def check_profile(self, profile):
+        from .peer import peer_request
+        from .management import PROTOCOL,runtime_digest
+        challenge=secrets.token_hex(32)
+        result=asyncio.run(peer_request(profile,'/connection',{'challenge':challenge}))
+        if result.get('management')!=PROTOCOL or not isinstance(result.get('proof'),str) or not secrets.compare_digest(result['proof'],hashlib.sha256(challenge.encode()).hexdigest()):
+            raise ValueError('Foreign management write/read proof failed')
+        evidence={'ok':True,'time':time.time(),'management':PROTOCOL,'ready':result.get('ready') is True,
+                  'runtime_match':result.get('runtime_digest')==runtime_digest(),'version':result.get('version')}
+        self.connections[profile['id']]=evidence
+        return evidence
+
+    def check_connection(self, body):
+        strict_fields(body,['profile_id'],['profile_id'])
+        profile=self.profile(body['profile_id'])
+        if not profile.get('agent_token'):raise ValueError('Manual SSH profile has no management pairing; pair using the foreign panel code')
+        try:return self.check_profile(profile)
+        except Exception:
+            self.connections[profile['id']]={'ok':False,'time':time.time(),'management':'https-v1'}
+            raise
+
+    async def remote_action(self, body):
+        from .peer import peer_request
+        strict_fields(body,['profile_id','kind','body'],['profile_id','kind','body'])
+        if body['kind'] not in ('service','imported','inventory'):raise ValueError('invalid remote action kind')
+        profile=self.profile(body['profile_id'])
+        if not profile.get('agent_token'):raise ValueError('Pair the management agent first')
+        if body['kind']!='inventory' and self.busy:raise ValueError('installation already running')
+        route={'service':'/node-action','imported':'/node-imported-action','inventory':'/inventory'}[body['kind']]
+        return await peer_request(profile,route,body['body'])
 
     async def observe(self):
         """Only signed, actual carrier probes are sent to the foreign panel."""
@@ -434,9 +492,9 @@ class Worker:
         fields = ['profile_id', 'iran', 'foreign', 'services', 'transports', 'experimental', 'base_port', 'carrier_base', 'health_port', 'paqet_port', 'browser_port', 'open_ufw','paqet_options','paqet_keep_secrets','continuum_options']
         strict_fields(body, fields, ['profile_id', 'iran', 'services', 'transports'])
         profile = self.profile(body['profile_id'])
-        if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP services')
+        if not isinstance(body['services'], list) or not 0 <= len(body['services']) <= 40: raise ValueError('use up to 40 TCP/UDP services')
         for service in body['services']:
-            strict_fields(service, ['id', 'listen', 'target'], ['id', 'listen', 'target'])
+            strict_fields(service, ['id', 'listen', 'target', 'protocol'], ['id', 'listen', 'target'])
             if not all(isinstance(service[k],str) and len(service[k])<=300 for k in ['id','listen','target']): raise ValueError('invalid service field')
         if not isinstance(body['transports'], list) or not all(isinstance(t, str) for t in body['transports']): raise ValueError('invalid transports')
         if not isinstance(body.get('open_ufw', False), bool): raise ValueError('open_ufw must be boolean')
@@ -605,7 +663,9 @@ def application(worker):
     async def start(request): return web.json_response(await worker.start(await request.json()), status=202)
     async def paqet_action(request):return web.json_response(await worker.paqet_action(await request.json()))
     async def imported_action(request):return web.json_response(await worker.imported_action(await request.json()))
-    app.add_routes([web.post('/imported-action',imported_action),web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
+    async def connection(request):return web.json_response(await asyncio.to_thread(worker.check_connection,await request.json()))
+    async def remote_action(request):return web.json_response(await worker.remote_action(await request.json()))
+    app.add_routes([web.post('/connection',connection),web.post('/remote-action',remote_action),web.post('/imported-action',imported_action),web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
     async def cleanup(app):
         if worker.task: await worker.task
     app.on_cleanup.append(cleanup)

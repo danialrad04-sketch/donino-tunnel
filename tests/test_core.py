@@ -226,6 +226,30 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         response=await client.post('/api/action',headers={'Authorization':'Bearer private-api-token-for-testing'},json={'path':'primary','action':'prefer'})
         self.assertEqual(response.status,200)
 
+    async def test_live_settings_require_csrf_validate_fields_and_survive_restart(self):
+        _,client=await self.panel_client()
+        response=await client.post('/api/settings',json={'policy':{'max_connections':512}})
+        self.assertEqual(response.status,401)
+        login=await client.post('/api/login',json={'password':PASSWORD});csrf=(await login.json())['csrf']
+        body={'policy':{'max_connections':512,'memory_reserve_mb':128}}
+        response=await client.post('/api/settings',json=body);self.assertEqual(response.status,403)
+        response=await client.post('/api/settings',headers={'X-CSRF-Token':csrf},json=body)
+        self.assertEqual(response.status,200)
+        self.assertEqual((await response.json())['policy']['max_connections'],512)
+        response=await client.post('/api/settings',headers={'X-CSRF-Token':csrf},json={'policy':{'command':'id'}})
+        self.assertEqual(response.status,400)
+        self.assertEqual(Gateway(self.config,self.store).policy['max_connections'],512)
+
+    async def test_panel_assets_are_compressed_and_revalidated_while_api_stays_private(self):
+        _,client=await self.panel_client()
+        response=await client.get('/workspace.js',headers={'Accept-Encoding':'gzip'})
+        self.assertEqual(response.status,200)
+        self.assertEqual(response.headers.get('Content-Encoding'),'gzip')
+        self.assertIn('must-revalidate',response.headers['Cache-Control'])
+        self.assertIn('setupWorkspaceV2',await response.text())
+        response=await client.get('/api/status')
+        self.assertEqual(response.headers['Cache-Control'],'no-store')
+
     async def test_log_polling_does_not_flood_events_and_exports_include_inventory(self):
         from unittest.mock import patch
         panel,client=await self.panel_client()

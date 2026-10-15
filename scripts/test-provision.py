@@ -1,4 +1,4 @@
-"""Disposable systemd nodes: actual HTTP panel -> Unix worker -> SSH installation.
+"""Disposable systemd nodes: panel -> Unix worker -> pinned HTTPS installation.
 
 Run on an isolated Linux CI runner with Docker, never on the user's VPS.
 """
@@ -118,23 +118,30 @@ def main():
             # The origin fixture is a plain child process, so start it AFTER
             # the boot test. A node restart intentionally kills non-unit tasks.
             execute('foreign','python3','-c',"import subprocess;subprocess.Popen(['python3','/source/tests/systemd/origin.py'],start_new_session=True,stdout=open('/tmp/origin.log','w'),stderr=subprocess.STDOUT)")
+            # Reproduce the user's failure: root public-key login is forbidden.
+            # Pairing, editing and complete installation MUST still succeed.
+            execute('foreign','python3','-c',"from pathlib import Path;Path('/etc/ssh/sshd_config.d/00-fixture-no-root.conf').write_text('PermitRootLogin no\\n')")
+            execute('foreign','systemctl','reload','ssh.service')
             code=foreign_api('/api/foreign/code',{})
             try:p=api('/api/provision/pair',{'name':'Disposable foreign','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as error:
                 reason=json.loads(error.read()).get('error','unknown pairing failure')
                 raise AssertionError('fixture pairing failed: '+reason) from error
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
-            assert 'restrict ssh-ed25519' in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
+            assert p['management']=='https-v1'
+            assert api('/api/provision/connection',{'profile_id':p['id']})['runtime_match']
+            assert not execute('foreign','python3','-c',"from pathlib import Path;p=Path('/var/lib/donino-foreign/authorized_keys');print(p.read_text() if p.exists() else '')").strip()
             assert 'agent_token' not in json.dumps(api('/api/provision/state'))
             try:api('/api/provision/pair',{'name':'Replay','host':ips['foreign'],'agent_port':9444,'code':code['code']})
             except urllib.error.HTTPError as e:assert e.code==400
             else:raise AssertionError('pairing code replay succeeded')
-            report['standalone_panels_and_automatic_ssh_pairing']=True
+            report['standalone_panels_and_pinned_https_pairing_with_root_ssh_disabled']=True
             report['unrelated_operator_ssh_key_preserved']=True
             import runpy
             verify=runpy.run_path(str(BASE/'scripts/test-existing-paqet.py'))['verify']
             report['external_paqet_adoption']=verify(api,foreign_api,execute,ips,p,login,foreign_login,base,foreign_base)
             spec={'profile_id':p['id'],'iran':ips['iran'],'foreign':ips['foreign'],'services':[{'id':'app','listen':'0.0.0.0:18080','target':'127.0.0.1:18081'}],'transports':['frp-wss','frp-quic','backpack-wss','backhaul-wss','browser-wss','paqet','donino-mux','donino-continuum'],'experimental':True,'open_ufw':True}
+            spec['services'].append({'id':'datagram','listen':'0.0.0.0:18084','target':'127.0.0.1:18082','protocol':'udp'})
             spec['paqet_options']={'conn':2,'kcp':{'mode':'normal','dshard':10,'pshard':3,'sndwnd':128,'rcvwnd':128},
                                    'pcap_sockbuf':4194304,'local_flag':['PA'],'remote_flag':['PA'],
                                    'forwards':[{'listen':'0.0.0.0:444','target':'127.0.0.1:18082','protocol':'udp'},
@@ -196,6 +203,40 @@ def main():
                 assert current['bytes_up']-counters['bytes_up']==len(data) and current['bytes_down']-counters['bytes_down']==len(data),carrier
                 payloads.append({'carrier':carrier,'payload_bytes_each_direction':len(data),'sha256_match':True,'half_close':True})
             report['results'].append({'installation':'eight-carrier complete','payloads':payloads,'all_path_and_origin_probes':True,'authentication_preserved':True})
+            # One application UDP socket keeps its foreign association across
+            # carrier changes. Each selected carrier carries actual datagrams.
+            udp_paths=[]
+            with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
+                udp.settimeout(10)
+                for carrier in ['paqet', *[t for t in spec['transports'] if t!='paqet']]:
+                    api('/api/action',{'action':'prefer','path':carrier})
+                    payload=os.urandom(1200)
+                    udp.sendto(payload,(ips['iran'],18084))
+                    received,_=udp.recvfrom(2048)
+                    assert received==payload,carrier
+                    udp_paths.append(carrier)
+                api('/api/action',{'action':'prefer','path':'paqet'})
+                udp.sendto(b'before-paqet-stop',(ips['iran'],18084))
+                assert udp.recvfrom(2048)[0]==b'before-paqet-stop'
+                execute('foreign','systemctl','stop','donino-link-paqet.service')
+                try:
+                    for _ in range(30):
+                        if not next(p for p in api('/api/status')['paths'] if p['id']=='paqet')['healthy']:break
+                        time.sleep(1)
+                    else:raise AssertionError('UDP primary failure was not detected')
+                    udp.sendto(b'after-paqet-stop',(ips['iran'],18084))
+                    assert udp.recvfrom(2048)[0]==b'after-paqet-stop'
+                    assert api('/api/status')['udp'][0]['selected']!='paqet'
+                finally:execute('foreign','systemctl','start','donino-link-paqet.service')
+                for _ in range(40):
+                    if next(p for p in api('/api/status')['paths'] if p['id']=='paqet')['healthy']:break
+                    time.sleep(1)
+                else:raise AssertionError('Paqet did not recover after UDP fallback test')
+            report['udp_gateway']={'carriers':udp_paths,'same_client_socket':True,'payload_bytes':1200,'bidirectional_match':True}
+            report['udp_gateway']['real_paqet_service_loss_fallback']=True
+            settings=api('/api/settings',{'policy':{'max_connections':512,'memory_reserve_mb':64}})
+            assert settings['policy']['max_connections']==512
+            report['live_capacity_settings']=True
             report['paqet_native']=json.loads(execute('iran','python3','/source/tests/systemd/paqet_client.py'))
             assert api('/api/provision/paqet-action',{'action':'udp-test'})['ok']
             version=api('/api/provision/paqet-action',{'action':'version'});assert version['ok'] and 'alpha.21' in version['output']
@@ -342,8 +383,8 @@ def main():
             peer=next(p for p in foreign_state['paired'] if not p['revoked'])
             revoked=foreign_api('/api/foreign/revoke',{'id':peer['id']});assert revoked['revoked']
             assert execute('foreign','cat','/root/.ssh/authorized_keys')==operator_key
-            assert peer['id'] not in execute('foreign','cat','/var/lib/donino-foreign/authorized_keys')
-            report['pairing_revocation_removes_only_owned_ssh_key']=True
+            assert peer['id'] not in execute('foreign','python3','-c',"from pathlib import Path;p=Path('/var/lib/donino-foreign/authorized_keys');print(p.read_text() if p.exists() else '')")
+            report['https_revocation_preserves_operator_ssh_keys']=True
             for _ in range(30):
                 revoked_status=foreign_api('/api/status')
                 if not revoked_status['telemetry_fresh']:break

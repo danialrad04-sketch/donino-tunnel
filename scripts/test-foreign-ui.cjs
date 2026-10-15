@@ -44,14 +44,17 @@ async function main(){
     await outside.locator('#foreign-code-value').evaluate(e=>e.value='');
     await outside.locator('#foreign-code-expiry').evaluate(e=>e.textContent='کد یک‌بارمصرف ساخته شد · برای پیش‌نمایش پنهان شده');
     await outside.screenshot({path:'ui-role-results/foreign-desktop.png',fullPage:true});
+    const lightBackground=await outside.evaluate(()=>getComputedStyle(document.body).backgroundColor);
     await outside.locator('#theme').click();
     await outside.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
-    await outside.waitForFunction(()=>getComputedStyle(document.querySelector('#refresh')).backgroundColor==='rgb(24, 32, 51)');
+    // Verify the rendered theme changes. Toolbar buttons are intentionally
+    // transparent in Workspace 02; their old fixed colors are not a contract.
+    await outside.waitForFunction(before=>getComputedStyle(document.body).backgroundColor!==before,lightBackground);
     await outside.screenshot({path:'ui-role-results/foreign-dark.png',fullPage:true});
     await outside.setViewportSize({width:390,height:844});
     await outside.locator('#theme').click();
     await outside.waitForFunction(()=>document.documentElement.dataset.theme==='light');
-    await outside.waitForFunction(()=>getComputedStyle(document.querySelector('#refresh')).backgroundColor==='rgb(255, 255, 255)');
+    await outside.waitForFunction(before=>getComputedStyle(document.body).backgroundColor===before,lightBackground);
     await outside.screenshot({path:'ui-role-results/foreign-mobile.png',fullPage:true});
     const foreignOverflow=await outside.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
     const iran=await browser.newPage({viewport:{width:1440,height:1000}});iran.on('pageerror',e=>errors.push(e.message));
