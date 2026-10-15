@@ -63,6 +63,16 @@ HTTPS برای پنل remote لازم است. HTTP فقط با IP صریح loopb
 
 Donino backend را بدون تغییر از upstream دریافت می‌کند. مجوز کد خود Donino MIT است. 3x-ui و nodeِ PasarGuard GPL-3.0 و پنل PasarGuard AGPL-3.0 هستند. متن GPL و آدرس source نسخهٔ backend کنار نصب نگه داشته می‌شود. BackPack و Backhaul نیز AGPL-3.0 هستند. [یادداشت منابع و مجوزها](ecosystem-research.md) و LICENSE دقیق نسخه‌ها مرجع استفاده و توزیع‌اند.
 
+## شواهد این تغییر
+
+[آزمون باینری واقعی](evidence/ecosystem-real-tests.json) · [مرورگر با پنل احراز هویت‌شده و vendor fixture](evidence/ecosystem-browser-tests.json). تصاویر زیر از دادهٔ ساختگی آزمون مرورگر هستند، نه آمار VPS یا کاربران واقعی.
+
+![استودیوی شبکه، تم روشن](evidence/ecosystem-studio-light.png)
+
+![مدیریت کاربران، تم تیره](evidence/ecosystem-accounts-dark.png)
+
+[نمای تیره](evidence/ecosystem-studio-dark.png) · [اتصال پنل، موبایل](evidence/ecosystem-providers-mobile.png)
+
 ## تکرار آزمون‌ها
 
 ```bash

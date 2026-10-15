@@ -194,6 +194,19 @@ class EcosystemTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client['customVendorField'], 'preserved')
         with self.assertRaises(ValueError): await self.eco.subscription(config['id'], row['key'])
 
+    async def test_inbound_preview_is_data_only_and_writes_require_permission(self):
+        self.xui3 = True
+        config = await self.connect(kind='3x-ui', write=False)
+        before = len(self.calls)
+        body = {'name': 'Reality', 'port': 8443, 'server_name': 'www.example.com', 'apply': False}
+        preview = await self.eco.inbound(config['id'], body)
+        self.assertEqual(preview['preview']['tunnel_target'], '127.0.0.1:8443')
+        self.assertEqual(len(self.calls), before)
+        with self.assertRaises(ValueError): await self.eco.inbound(config['id'], dict(body, apply=True))
+        self.assertEqual(len(self.calls), before)
+        for bad in (dict(body, port=20539), dict(body, server_name='https://bad.com'), dict(body, apply='yes')):
+            with self.assertRaises(ValueError): await self.eco.inbound(config['id'], bad)
+
     async def test_panel_routes_require_session_csrf_and_exclude_private_backup(self):
         config = configuration(self.root)
         atomic_json(self.root/'admin.json', password_record(PASSWORD))

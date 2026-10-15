@@ -1,0 +1,14 @@
+{
+  "checks": 43,
+  "js_errors": [],
+  "real_panel": true,
+  "vendor": "declared fixture",
+  "themes": 2,
+  "widths": [
+    320,
+    390,
+    768,
+    1440
+  ],
+  "result": "passed"
+}

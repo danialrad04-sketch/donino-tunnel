@@ -59,3 +59,18 @@ class BackendTests(unittest.TestCase):
         self.assertFalse(backend.private.is_relative_to(backend.root))
         for request in ({}, {'confirm_install': False}, {'confirm_install': True, 'url': 'evil'}):
             with self.assertRaises(ValueError): backend.install(request)
+
+    def test_delivery_rewrites_only_endpoint_preserving_reality_credentials(self):
+        import base64
+        from donino_link.ecosystem import delivery_links
+        link='vless://stable-uuid@127.0.0.1:8443?security=reality&pbk=public-key&sid=abcdef#user'
+        mapped=delivery_links([link],'2001:db8::10',443)[0]
+        self.assertIn('stable-uuid@[2001:db8::10]:443',mapped)
+        self.assertIn('pbk=public-key&sid=abcdef',mapped)
+        vmess={'add':'127.0.0.1','port':'8443','id':'stable-uuid'}
+        value='vmess://'+base64.b64encode(json.dumps(vmess).encode()).decode()
+        output=delivery_links([value],'vpn.example.com',443)[0]
+        decoded=json.loads(base64.b64decode(output[8:]))
+        self.assertEqual(decoded,dict(vmess,add='vpn.example.com',port='443'))
+        with self.assertRaises(ValueError): delivery_links([link,link.replace(':8443',':8444')],'vpn.example.com',443)
+        with self.assertRaises(ValueError): delivery_links([link],'https://bad.example.com',443)
