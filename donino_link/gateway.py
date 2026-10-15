@@ -49,6 +49,7 @@ class Gateway:
         self.adaptive = store.get('adaptive',False) is True
         self.router = AdaptiveRouter(self.policy)
         self.udp_listeners = []
+        self.stopping = False
         self._memory_checked = 0
         self._memory_available = None
 
@@ -148,6 +149,7 @@ class Gateway:
             await asyncio.sleep(self.policy["probe_interval"])
 
     async def start(self):
+        self.stopping = False
         # Start all listeners transactionally: no partial startup on a port conflict.
         try:
             for service in self.config["services"]:
@@ -166,6 +168,7 @@ class Gateway:
         self.tasks.append(asyncio.create_task(self.monitor()))
 
     async def stop(self):
+        self.stopping = True
         await asyncio.gather(*(l.stop() for l in self.udp_listeners))
         self.udp_listeners.clear()
         for server in self.servers:
@@ -186,7 +189,7 @@ class Gateway:
         counted = False
         pumps = []
         try:
-            if self.paused or self.active >= self.policy["max_connections"] or self.admission_reason():
+            if self.stopping or self.paused or self.active >= self.policy["max_connections"] or self.admission_reason():
                 self.rejected += 1
                 return
             self.active += 1
@@ -196,6 +199,8 @@ class Gateway:
                     upstream_reader, upstream = await asyncio.wait_for(
                         asyncio.open_connection(*endpoint(path.config["backends"][service["id"]])),
                         self.policy["connect_timeout"])
+                    if self.stopping:
+                        return
                     chosen = path
                     break
                 except (OSError, asyncio.TimeoutError):

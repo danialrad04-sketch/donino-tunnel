@@ -135,10 +135,13 @@ class ForeignFlow:
         self.sequence = time.time_ns()
         self.route = None
         self.socket = None
+        self.closed = False
         self.queue = asyncio.Queue(QUEUE)
         self.task = asyncio.create_task(self.run())
 
     def response(self, data, address):
+        if self.closed or self.relay.stopping:
+            return
         if not 0 < len(data) <= MAX_PAYLOAD or not self.route:
             self.relay.dropped += 1
             return
@@ -154,7 +157,7 @@ class ForeignFlow:
         try:
             self.socket, _ = await asyncio.get_running_loop().create_datagram_endpoint(
                 lambda: Protocol(self.response), remote_addr=endpoint(self.relay.target))
-            while True:
+            while not self.closed and not self.relay.stopping:
                 try:
                     remaining = max(.001, self.last + self.relay.idle - time.monotonic())
                     data = await asyncio.wait_for(self.queue.get(), remaining)
@@ -162,10 +165,13 @@ class ForeignFlow:
                     if time.monotonic() - self.last < self.relay.idle:
                         continue
                     break
+                if self.closed or self.relay.stopping:
+                    break
                 self.socket.sendto(data)
         except (OSError, asyncio.TimeoutError):
             pass
         finally:
+            self.closed = True
             if self.socket:
                 self.socket.close()
             self.relay.flows.pop(self.identity, None)
@@ -178,9 +184,12 @@ class DatagramRelay:
         self.flows, self.connections = {}, set()
         self.bytes_up = self.bytes_down = self.dropped = 0
         self.server = self.socket = None
+        self.stopping = False
         self.pool = pool if pool is not None else [self]
 
     def receive(self, frame, route):
+        if self.stopping:
+            return
         try:
             identity, sequence, data, health = decode(self.key, self.service, b'up', frame)
         except ValueError:
@@ -210,12 +219,13 @@ class DatagramRelay:
     async def stream(self, reader, writer):
         task = asyncio.current_task()
         # Reserve bounded headroom for health probes at association capacity.
-        if sum(len(r.connections) for r in self.pool) >= self.limit + 16:
+        if self.stopping or sum(len(r.connections) for r in self.pool) >= self.limit + 16:
             writer.close()
             await writer.wait_closed()
             return
         self.connections.add(task)
         responses = asyncio.Queue(QUEUE)
+        closing = False
 
         def route(frame):
             if task.done() or writer.is_closing() or responses.full():
@@ -224,14 +234,14 @@ class DatagramRelay:
             return True
 
         async def send():
-            while True:
+            while not closing and not self.stopping:
                 frame = await responses.get()
                 write_frame(writer, frame)
                 await asyncio.wait_for(writer.drain(), 5)
 
         sender = asyncio.create_task(send())
         try:
-            while True:
+            while not self.stopping:
                 frame_task = asyncio.create_task(read_frame(reader))
                 done, _ = await asyncio.wait((frame_task, sender), timeout=self.idle,
                                              return_when=asyncio.FIRST_COMPLETED)
@@ -243,6 +253,7 @@ class DatagramRelay:
         except (OSError, ValueError, asyncio.IncompleteReadError):
             pass
         finally:
+            closing = True
             sender.cancel()
             if 'frame_task' in locals():
                 frame_task.cancel()
@@ -258,6 +269,8 @@ class DatagramRelay:
         try:
             def receive(frame, address):
                 def route(response):
+                    if self.stopping or self.socket.is_closing():
+                        return False
                     self.socket.sendto(response, address)
                     return True
                 self.receive(frame, route)
@@ -268,12 +281,15 @@ class DatagramRelay:
             raise
 
     async def stop(self):
+        self.stopping = True
         if self.server:
             self.server.close()
             await self.server.wait_closed()
         if self.socket:
             self.socket.close()
         tasks = [f.task for f in self.flows.values()] + list(self.connections)
+        for flow in self.flows.values():
+            flow.closed = True
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -292,9 +308,12 @@ class Association:
         self.queue = asyncio.Queue(QUEUE)
         self.writer = self.native = self.reader_task = None
         self.path = None
+        self.closed = False
         self.task = asyncio.create_task(self.run())
 
     def response(self, frame, address=None):
+        if self.closed or self.listener.stopping or self.listener.socket.is_closing():
+            return
         try:
             identity, sequence, data, health = decode(self.listener.gateway.config['health_key'],
                                               self.listener.service['id'], b'down', frame)
@@ -347,13 +366,15 @@ class Association:
     async def run(self):
         gateway = self.listener.gateway
         try:
-            while True:
+            while not self.closed and not self.listener.stopping:
                 try:
                     remaining = max(.001, self.last + self.listener.idle - time.monotonic())
                     data, created = await asyncio.wait_for(self.queue.get(), remaining)
                 except asyncio.TimeoutError:
                     if time.monotonic() - self.last < self.listener.idle:
                         continue
+                    break
+                if self.closed or self.listener.stopping:
                     break
                 self.last = time.monotonic()
                 if time.monotonic() - created > 2:
@@ -377,6 +398,8 @@ class Association:
                             break
                         except (OSError, asyncio.TimeoutError):
                             await self.close_path()
+                if self.closed or self.listener.stopping:
+                    break
                 if not self.path or time.monotonic() - created > 2:
                     self.listener.dropped += 1
                     continue
@@ -398,6 +421,7 @@ class Association:
         except (OSError, asyncio.TimeoutError, ValueError):
             pass
         finally:
+            self.closed = True
             await self.close_path()
             self.listener.flows.pop(self.address, None)
 
@@ -410,8 +434,11 @@ class DatagramListener:
         self.idle = gateway.policy.get('udp_idle_timeout', IDLE)
         self.bytes_up = self.bytes_down = self.dropped = self.accepted = self.rejected = self.failovers = 0
         self.last_path = None
+        self.stopping = False
 
     def receive(self, data, address):
+        if self.stopping:
+            return
         if not 0 < len(data) <= MAX_PAYLOAD:
             self.dropped += 1
             return
@@ -433,9 +460,12 @@ class DatagramListener:
             lambda: Protocol(self.receive), local_addr=endpoint(self.service['listen']))
 
     async def stop(self):
+        self.stopping = True
         if self.socket:
             self.socket.close()
         tasks = [f.task for f in self.flows.values()]
+        for flow in self.flows.values():
+            flow.closed = True
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

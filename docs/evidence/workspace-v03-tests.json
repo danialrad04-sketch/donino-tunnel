@@ -4,7 +4,7 @@
   "source_parent": "1322826c2c99692115f2585984f9f42bcb081855",
   "python": "3.12.14",
   "unit": {
-    "count": 202,
+    "count": 204,
     "result": "passed",
     "command": "python -m unittest discover -s tests -v"
   },
@@ -356,7 +356,7 @@
   "real_transports_and_mixed_load": {
     "mtls_front_requires_client_certificate": true,
     "frp-wss": {
-      "probe_ms": 7.557,
+      "probe_ms": 10.493,
       "bytes_echoed": 2097152,
       "binary_payload_sha256_match": true,
       "half_close_preserved": true,
@@ -364,7 +364,7 @@
       "udp_payload_sha256_match": true
     },
     "frp-quic": {
-      "probe_ms": 4.389,
+      "probe_ms": 4.159,
       "bytes_echoed": 2097152,
       "binary_payload_sha256_match": true,
       "half_close_preserved": true,
@@ -372,7 +372,7 @@
       "udp_payload_sha256_match": true
     },
     "backpack-wss": {
-      "probe_ms": 10.404,
+      "probe_ms": 7.857,
       "bytes_echoed": 2097152,
       "binary_payload_sha256_match": true,
       "half_close_preserved": true,
@@ -380,7 +380,7 @@
       "udp_payload_sha256_match": true
     },
     "backhaul-wss": {
-      "probe_ms": 6.859,
+      "probe_ms": 13.37,
       "bytes_echoed": 2097152,
       "binary_payload_sha256_match": true,
       "half_close_preserved": true,
@@ -395,9 +395,9 @@
       "udp_messages": 100,
       "tcp_bytes_each_direction": 6553600,
       "udp_payload_bytes": 1200,
-      "wall_seconds": 0.696,
-      "controller_cpu_seconds": 0.342,
-      "controller_max_rss_mib": 83.29,
+      "wall_seconds": 0.644,
+      "controller_cpu_seconds": 0.361,
+      "controller_max_rss_mib": 84.62,
       "available_cpu_cores": 1,
       "all_payloads_match": true
     },
@@ -413,7 +413,7 @@
       "bytes_echoed": 524288,
       "pass": true
     },
-    "elapsed_seconds": 3.11,
+    "elapsed_seconds": 3.04,
     "scope": "loopback Linux, amd64; no Iran route, raw packets or production load test"
   },
   "native_browser": {
@@ -464,5 +464,16 @@
     "UI matrix uses declared API fixtures; the real-engine panel test is separate.",
     "Final real VPS, WAN, games/calls and backend tests are assigned to the operator."
   ],
-  "ci": "Exact-commit workflow status is linked in the GitHub pull request and release notes."
+  "ci": "Exact-commit workflow status is linked in the GitHub pull request and release notes.",
+  "python310_portable_runtime": {
+    "version": "3.10.22",
+    "count": 204,
+    "seconds": 60.838,
+    "result": "passed",
+    "packages": "exact bundled portable wheels",
+    "shutdown_regressions": [
+      "cancellation completion race in Mux consumer",
+      "UDP shutdown with replies in flight"
+    ]
+  }
 }

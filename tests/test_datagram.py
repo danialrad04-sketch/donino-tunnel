@@ -211,6 +211,19 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(listener.flows[address].queue.qsize(), 32)
         self.assertGreaterEqual(listener.dropped, 469)
 
+    async def test_shutdown_with_replies_in_flight_does_not_send_on_closed_transports(self):
+        errors=[];loop=asyncio.get_running_loop();previous=loop.get_exception_handler()
+        loop.set_exception_handler(lambda loop,context:errors.append(context))
+        try:
+            client=await self.client()
+            await self.exchange(client,b'establish')
+            for _ in range(50):client[0].sendto(b'in-flight')
+            await asyncio.sleep(.01)
+            await self.gateway.stop();await self.relay.stop()
+            await asyncio.sleep(.05)
+            self.assertEqual(errors,[])
+        finally:loop.set_exception_handler(previous)
+
     async def test_live_policy_is_persisted_and_invalid_changes_are_atomic(self):
         self.gateway.configure({'max_connections':512, 'memory_reserve_mb':128})
         before = dict(self.gateway.policy)
