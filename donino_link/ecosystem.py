@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from aiohttp import ClientSession, ClientTimeout, CookieJar, DummyCookieJar, Fingerprint, ClientError
+from aiohttp import ClientSession, ClientTimeout, CookieJar, DummyCookieJar, Fingerprint, ClientError, UnixConnector
 from .config import atomic_json
 
 KINDS = ('pasarguard', '3x-ui', '3x-ui-legacy')
@@ -142,6 +142,23 @@ class Upstream:
         self.config, self.session = config, session
 
     async def call(self, method, route, *, data=None, payload=None):
+        if self.config.get('peer_profile'):
+            from .provision import SOCKET
+            try:
+                async with ClientSession(connector=UnixConnector(path=str(SOCKET)), timeout=ClientTimeout(total=35)) as bridge:
+                    async with bridge.post('http://localhost/vpn-backend-api', json={'profile_id': self.config['peer_profile'],
+                        'request': {'method':method,'route':route,'data':data,'payload':payload}}) as response:
+                        chunks, size = [], 0
+                        async for chunk in response.content.iter_chunked(65536):
+                            size += len(chunk)
+                            if size > MAX_BODY: raise ProviderError('پاسخ backend از سقف مجاز بیشتر است.')
+                            chunks.append(chunk)
+                        result = json.loads(b''.join(chunks))
+                        if response.status != 200 or not isinstance(result,dict) or result.get('success') is not True:
+                            raise ProviderError('عملیات backend خارج پذیرفته نشد؛ جفت‌سازی، نسخهٔ عامل و وضعیت backend را بررسی کن.')
+                        return result.get('obj')
+            except (ClientError, asyncio.TimeoutError, OSError, json.JSONDecodeError):
+                raise ProviderError('کانال امن backend خارج در دسترس نیست؛ نوشتن خودکار تکرار نمی‌شود.') from None
         ssl = Fingerprint(bytes.fromhex(self.config['fingerprint'])) if self.config.get('fingerprint') else True
         headers = {'Authorization': ('ApiKey ' if self.config.get('auth') == 'apikey' else 'Bearer ') + self.config['token']} if self.config.get('token') else {}
         try:
@@ -179,7 +196,9 @@ class Ecosystem:
             self.path.chmod(0o600)
 
     def public(self, config):
-        return {k: config[k] for k in ('id', 'name', 'kind', 'url', 'writable', 'fingerprint')}
+        result = {k: config[k] for k in ('id', 'name', 'kind', 'url', 'writable', 'fingerprint')}
+        result['peer_profile'] = config.get('peer_profile')
+        return result
 
     def state(self):
         return {'connections': [self.public(c) for c in self.connections], 'catalog': catalog()}
@@ -200,7 +219,7 @@ class Ecosystem:
                 await upstream.call('POST', '/login', data={'username': config['username'], 'password': config['password']})
             yield upstream
 
-    async def connect(self, body):
+    async def connect(self, body, peer_profile=None):
         fields(body, ('name', 'kind', 'url', 'token', 'username', 'password', 'writable', 'fingerprint', 'auth'), ('name', 'kind', 'url'))
         if body['kind'] not in KINDS or type(body.get('writable', False)) is not bool:
             raise ValueError('نوع اتصال یا مجوز نوشتن معتبر نیست.')
@@ -211,7 +230,11 @@ class Ecosystem:
                   'fingerprint': body.get('fingerprint', '')}
         if config['fingerprint'] and not re.fullmatch(r'[a-fA-F0-9]{64}', config['fingerprint']):
             raise ValueError('اثر انگشت گواهی باید SHA256 با ۶۴ رقم hex باشد.')
-        if config['kind'] == '3x-ui-legacy':
+        if peer_profile:
+            if config['kind'] != '3x-ui' or not re.fullmatch(r'[a-f0-9]{32}', peer_profile):
+                raise ValueError('Invalid internal peer profile')
+            config['peer_profile'] = peer_profile
+        elif config['kind'] == '3x-ui-legacy':
             config.update(username=text(body.get('username'), 128), password=text(body.get('password'), 256))
         else:
             config['token'] = text(body.get('token'), 4096)

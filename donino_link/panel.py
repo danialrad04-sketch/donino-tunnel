@@ -197,11 +197,17 @@ class Panel:
         try:
             body = await request.json() if request.method == 'POST' else None
             if body is not None:
-                fields(body, ('confirm_install',), ('confirm_install',))
+                fields(body, ('confirm_install','profile_id'), ('confirm_install',))
                 if body['confirm_install'] is not True:
                     raise ValueError('تأیید نصب لازم است.')
-            async with ClientSession(connector=UnixConnector(path=str(socket)), timeout=ClientTimeout(total=240)) as session:
-                async with session.request(request.method, 'http://localhost/vpn-backend', json=body) as response:
+            remote_profile = body.get('profile_id') if body else request.query.get('profile_id')
+            if remote_profile and self.gateway.config['role'] != 'iran':
+                raise ValueError('مدیریت backend خارج از پنل ایران انجام می‌شود.')
+            worker_route = '/vpn-backend-remote' if remote_profile else '/vpn-backend'
+            method = 'POST' if remote_profile else request.method
+            payload = {'profile_id':remote_profile,'operation':'install' if request.method=='POST' else 'status','confirm_install':request.method=='POST'} if remote_profile else body
+            async with ClientSession(connector=UnixConnector(path=str(socket)), timeout=ClientTimeout(total=250)) as session:
+                async with session.request(method, 'http://localhost'+worker_route, json=payload) as response:
                     result = await response.json()
                     if response.status >= 400:
                         return web.json_response(result, status=response.status)
@@ -212,7 +218,7 @@ class Panel:
                 if existing:
                     result = {'connection': self.ecosystem.public(existing), 'installed': True}
                 else:
-                    connection = await self.ecosystem.connect({k: result[k] for k in ('name','kind','url','token','writable')})
+                    connection = await self.ecosystem.connect({k: result[k] for k in ('name','kind','url','token','writable') if k in result}, peer_profile=result.get('peer_profile'))
                     result = {'connection': connection, 'installed': True}
             return web.json_response(result)
         except (ClientError, asyncio.TimeoutError, OSError):

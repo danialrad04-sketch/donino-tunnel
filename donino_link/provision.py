@@ -674,6 +674,10 @@ def application(worker):
         result = await asyncio.to_thread(backend.status) if request.method == 'GET' else await asyncio.to_thread(backend.install, await request.json())
         return web.json_response(result)
     app.add_routes([web.get('/vpn-backend', vpn_backend), web.post('/vpn-backend', vpn_backend)])
+    async def vpn_remote(request):
+        from .vpn_bridge import remote
+        return web.json_response(await remote(worker,await request.json(),api=request.path=='/vpn-backend-api'))
+    app.add_routes([web.post('/vpn-backend-remote',vpn_remote),web.post('/vpn-backend-api',vpn_remote)])
     app.on_cleanup.append(cleanup)
     return app
 

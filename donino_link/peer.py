@@ -31,7 +31,7 @@ LIVE = Path('/etc/donino-link/current/node.json')
 SSH_DROPIN = Path('/etc/ssh/sshd_config.d/00-donino-pair.conf')
 OBSERVATIONS = Path('/var/lib/donino-link/peer-observations.json')
 PEER_ROUTES=('/exchange','/telemetry','/lease','/release','/revoke-self','/inventory','/external-health','/external-observation',
-             '/connection','/node-action','/node-imported-action','/install','/install-status')
+             '/connection','/node-action','/node-imported-action','/install','/install-status','/vpn-backend','/vpn-backend-api')
 
 
 def digest(value):
@@ -70,12 +70,16 @@ async def peer_request(profile, path, body=None, token=None):
     if not isinstance(pin, str) or not re.fullmatch('[0-9a-f]{64}', pin):
         raise ValueError('invalid peer certificate pin')
     headers = {'Authorization': 'Bearer '+(token or profile.get('agent_token',''))}
-    async with ClientSession(timeout=ClientTimeout(total=30), trust_env=False) as session:
+    async with ClientSession(timeout=ClientTimeout(total=240 if path=='/vpn-backend' else 30), trust_env=False) as session:
         async with session.post(f'https://{host}:{port}'+path, json=body, headers=headers,
                                 ssl=Fingerprint(bytes.fromhex(pin)), allow_redirects=False) as response:
-            limit=1048576 if path=='/inventory' else 32768
-            raw = await response.content.read(limit+1)
-            if len(raw) > limit: raise ValueError('peer response too large')
+            limit=8*1024*1024 if path=='/vpn-backend-api' else 1048576 if path=='/inventory' else 32768
+            chunks=[];length=0
+            async for chunk in response.content.iter_chunked(65536):
+                length+=len(chunk)
+                if length > limit: raise ValueError('peer response too large')
+                chunks.append(chunk)
+            raw=b''.join(chunks)
             if response.status==401:raise ValueError('Foreign management authentication failed; check the paired source IP or generate a new pairing code.')
             if response.status==404:raise ValueError('Foreign management agent needs an upgrade on the outside node; SSH fallback was not attempted.')
             try:result=json.loads(raw)
@@ -417,7 +421,20 @@ def application(agent, network=False):
             else:
                 pair=agent.authenticate(request.headers.get('Authorization',''),source)
                 body=await request.json()
-                if request.path=='/connection':result=await asyncio.to_thread(agent.management.connection,body)
+                if request.path in ('/vpn-backend','/vpn-backend-api'):
+                    from .vpn_backend import Backend
+                    from .vpn_bridge import local_api
+                    with agent.lock: agent.require_pair(pair)
+                    if request.path=='/vpn-backend-api':result=await local_api(body)
+                    else:
+                        strict_fields(body,['operation','confirm_install'],['operation'])
+                        backend=Backend()
+                        if body['operation']=='status':result=await asyncio.to_thread(backend.status)
+                        elif body['operation']=='install':
+                            await asyncio.to_thread(backend.install,{'confirm_install':body.get('confirm_install')})
+                            result=await asyncio.to_thread(backend.status)
+                        else:raise ValueError('Unsupported backend operation')
+                elif request.path=='/connection':result=await asyncio.to_thread(agent.management.connection,body)
                 elif request.path=='/install':result=await agent.management.install(pair,body)
                 elif request.path=='/install-status':result=agent.management.status(pair,body)
                 elif request.path in ('/node-action','/node-imported-action'):
