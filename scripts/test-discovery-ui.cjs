@@ -39,7 +39,11 @@ async function main(){
    if(await page.locator('#selected').textContent()!=='پایش نصب موجود'||await page.locator('#active').textContent()!=='—'||await page.locator('#traffic').textContent()!=='—')throw Error('bootstrap falsely reports imported tunnel failure or traffic');
    const unit=role==='iran'?'vendor-edge.service':'vendor-exit.service';
    await page.locator('.detected-service').filter({hasText:unit}).getByRole('button').click();
-   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/health'));await page.waitForFunction(()=>document.querySelector('#detected-health').textContent.includes('UDP: رفت‌وبرگشت امضاشده سالم'));
+   await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/health'));
+   // Observations expire after 45s. Cold browser startup may consume that
+   // interval, so explicitly request a fresh read-only probe in the Iran UI.
+   if(role==='iran')await signedHealth(page);
+   await page.waitForFunction(()=>document.querySelector('#detected-health').textContent.includes('UDP: رفت‌وبرگشت امضاشده سالم'));
    await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/logs'));await page.waitForFunction(()=>document.querySelector('#detected-logs').textContent.length>40&&!document.querySelector('#detected-logs').textContent.includes('در انتظار'));
    await page.evaluate(()=>navigateWorkspace('#service/'+detectedSelected+'/config'));
    const raw=await page.locator('#detected-config').inputValue();if(raw.includes('external-fixture-key-')||raw.includes('external-socks-password')||!raw.includes('[redacted]'))throw Error('secrets leaked into editor');

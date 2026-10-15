@@ -155,7 +155,7 @@ function render(d){
   if(!d.events.length)$("event-list").append(el("p","هنوز رویدادی ثبت نشده است.","empty-events"));
   $("updated").textContent="به‌روز هر ۳ ثانیه";
   if(foreign)renderForeign(d);
-  else if(d.bootstrap)notice("پنل ایران آماده است؛ برای نصب فعلی از بخش تشخیص سرویس‌های موجود استفاده کن.");
+  else if(d.bootstrap)notice("پنل ایران آماده است؛ از استودیوی شبکه پنل VPN را متصل کن یا از راه‌اندازی تانل ارتباط بساز.");
   syncNavigation();
   $("uptime").textContent="زمان فعالیت: "+fa(Math.floor(d.uptime/60))+" دقیقه";
 }

@@ -180,7 +180,7 @@ function setupWorkspaceV2(){
   $('setup-services').previousElementSibling.querySelector('strong').textContent='ورودی‌های TCP و UDP';
   const presets=el('div',undefined,'v2-presets');presets.append(el('span','شروع با یک الگو'));
   for(const [name,service,description] of [['VLESS / Xray',{id:'vless',listen:'0.0.0.0:443',target:'127.0.0.1:8443',protocol:'tcp'},'سرویس Xray موجود روی خارج باید در loopback پورت 8443 اجرا شود.'],['WireGuard',{id:'wireguard',listen:'0.0.0.0:51820',target:'127.0.0.1:51821',protocol:'udp'},'WireGuard موجود باید روی پورت 51821 خارج گوش کند؛ MTU کلاینت را 1280 قرار بده.'],['وب‌سرویس',{id:'web',listen:'0.0.0.0:8080',target:'127.0.0.1:8080',protocol:'tcp'},'مقصد باید پیش از نصب روی سرور خارج در دسترس باشد.']]){const button=el('button',name);button.type='button';button.onclick=()=>{$('setup-services').replaceChildren();addServiceRow(service);$('paqet-native-only').checked=false;syncPaqetInputs();invalidatePlan();$('v2-preset-note').textContent=description;};presets.append(button);}
-  const note=el('p','الگو فقط فرم را آماده می‌کند. حساب‌ها و اشتراک‌های VPN در پنل فعلی تو مدیریت می‌شوند.','field-help');note.id='v2-preset-note';$('setup-services').before(presets,note);
+  const note=el('p','الگو فرم را آماده می‌کند. برای حساب‌ها و اشتراک‌های VPN، پنل را در استودیوی شبکه متصل کن.','field-help');note.id='v2-preset-note';$('setup-services').before(presets,note);
 }
 function setupV2Settings(){
   const page=workspacePages.get('settings');page.replaceChildren(surfaceHeading('تنظیمات و منابع','تغییرات ظرفیت و پایش ذخیره می‌شوند و بدون قطع اتصال‌های جاری اعمال می‌شوند.'));

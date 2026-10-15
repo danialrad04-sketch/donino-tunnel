@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch,AsyncMock
 
 from aiohttp import ClientConnectionError, ServerFingerprintMismatch, web
 from aiohttp.test_utils import TestServer
@@ -102,6 +102,27 @@ class ManagementTLSTests(unittest.IsolatedAsyncioTestCase):
             result=await asyncio.to_thread(self.worker.pair,{'name':'Foreign fixture','host':'127.0.0.1',
                                                             'agent_port':self.server.port,'code':code})
         return self.worker.profile(result['id'])
+
+    async def test_paired_backend_routes_require_auth_and_never_return_root_receipts(self):
+        profile=await self.pair()
+        for route in ('/vpn-backend','/vpn-backend-api'):
+            with self.assertRaises(ValueError):
+                await peer_request({**profile,'agent_token':'wrong'},route,{})
+        class BackendFixture:
+            def install(self,body):
+                if body != {'confirm_install':True}:raise ValueError('confirm required')
+                return {'token':'PRIVATE-VENDOR-TOKEN'}
+            def status(self):return {'installed':True,'active':True}
+        with patch('donino_link.vpn_backend.Backend',return_value=BackendFixture()):
+            result=await peer_request(profile,'/vpn-backend',{'operation':'install','confirm_install':True})
+            self.assertEqual(result,{'installed':True,'active':True})
+            self.assertNotIn('PRIVATE-VENDOR-TOKEN',json.dumps(result))
+        with patch('donino_link.vpn_bridge.local_api',AsyncMock(return_value={'success':True,'obj':[]})) as call:
+            await peer_request(profile,'/vpn-backend-api',{'method':'GET','route':'/panel/api/clients/list'})
+            call.assert_awaited_once()
+        self.agent.revoke(self.agent.pairs()[0]['id'])
+        with self.assertRaises(ValueError):
+            await peer_request(profile,'/vpn-backend-api',{'method':'GET','route':'/panel/api/clients/list'})
 
     async def test_pairing_and_roundtrip_need_no_root_ssh_login(self):
         profile=await self.pair()
