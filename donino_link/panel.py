@@ -37,15 +37,27 @@ class Panel:
         self.sessions = OrderedDict()
         self.attempts = OrderedDict()
         self.login_lock = asyncio.Lock()
+        from .ecosystem import Ecosystem
+        self.ecosystem = Ecosystem(gateway.store, Path(gateway.config['state_db']).parent / 'ecosystem-connections.json')
         self.runner = None
         self.app = web.Application(client_max_size=65536, middlewares=[self.security,self.authentication])
         self.app.add_routes([
-            web.get("/",self.index),web.get("/app.js",self.static),web.get("/workspace.js",self.static),web.get("/style.css",self.static),web.get('/Vazirmatn.woff2',self.static),
+            web.get("/",self.index),web.get("/app.js",self.static),web.get("/workspace.js",self.static),web.get("/ecosystem.js",self.static),web.get("/style.css",self.static),web.get('/Vazirmatn.woff2',self.static),
             web.get("/healthz",self.healthz),web.post("/api/login",self.login),
             web.post("/api/logout",self.logout),web.get("/api/session",self.session),
             web.get("/api/status",self.status),web.get("/api/metrics",self.metrics),
             web.post("/api/action",self.action),web.get("/api/export",self.export),
             web.post('/api/settings',self.settings),
+            web.get('/api/ecosystem', self.ecosystem_api),
+            web.get('/api/ecosystem/bootstrap', self.backend_api),
+            web.post('/api/ecosystem/bootstrap', self.backend_api),
+            web.post('/api/ecosystem/connections', self.ecosystem_api),
+            web.delete('/api/ecosystem/connections/{provider}', self.ecosystem_api),
+            web.get('/api/ecosystem/{provider}/users', self.ecosystem_api),
+            web.get('/api/ecosystem/{provider}/inventory', self.ecosystem_api),
+            web.post('/api/ecosystem/{provider}/inbounds', self.ecosystem_api),
+            web.post('/api/ecosystem/{provider}/users', self.ecosystem_api),
+            web.post('/api/ecosystem/{provider}/subscription', self.ecosystem_api),
             web.get('/api/provision/state',self.provision),
             web.post('/api/provision/profiles',self.provision),
             web.post('/api/provision/pair',self.provision),
@@ -74,7 +86,7 @@ class Panel:
             "Content-Security-Policy":"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
             "Permissions-Policy":"camera=(), microphone=(), geolocation=()",
         })
-        if request.path in ('/app.js','/workspace.js','/style.css','/Vazirmatn.woff2'):
+        if request.path in ('/app.js','/workspace.js','/ecosystem.js','/style.css','/Vazirmatn.woff2'):
             response.headers['Cache-Control'] = 'public, max-age=0, must-revalidate'
         if request.secure:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -176,6 +188,76 @@ class Panel:
         except (ValueError,KeyError,TypeError,AttributeError):
             raise web.HTTPBadRequest(text="invalid action")
         return web.json_response({"ok":True})
+
+    async def backend_api(self, request):
+        from .ecosystem import fields
+        from .provision import SOCKET as iran_socket
+        from .peer import SOCKET as foreign_socket
+        socket = iran_socket if self.gateway.config['role'] == 'iran' else foreign_socket
+        try:
+            body = await request.json() if request.method == 'POST' else None
+            if body is not None:
+                fields(body, ('confirm_install',), ('confirm_install',))
+                if body['confirm_install'] is not True:
+                    raise ValueError('تأیید نصب لازم است.')
+            async with ClientSession(connector=UnixConnector(path=str(socket)), timeout=ClientTimeout(total=240)) as session:
+                async with session.request(request.method, 'http://localhost/vpn-backend', json=body) as response:
+                    result = await response.json()
+                    if response.status >= 400:
+                        return web.json_response(result, status=response.status)
+            if request.method == 'POST':
+                # Credential-bearing root receipt is consumed here, never relayed
+                # to the browser. API registration verifies the actual contract.
+                existing = next((c for c in self.ecosystem.connections if c['url'] == result['url']), None)
+                if existing:
+                    result = {'connection': self.ecosystem.public(existing), 'installed': True}
+                else:
+                    connection = await self.ecosystem.connect({k: result[k] for k in ('name','kind','url','token','writable')})
+                    result = {'connection': connection, 'installed': True}
+            return web.json_response(result)
+        except (ClientError, asyncio.TimeoutError, OSError):
+            return web.json_response({'error':'عامل نصب در دسترس نیست یا مهلت پایان یافت؛ پیش از تلاش بعدی وضعیت backend را بررسی کن.'}, status=503)
+        except ValueError as error:
+            return web.json_response({'error': str(error)}, status=400)
+        except (KeyError, TypeError):
+            return web.json_response({'error':'پاسخ عامل نصب با این نسخه سازگار نیست.'}, status=502)
+
+    async def ecosystem_api(self, request):
+        from .ecosystem import ProviderError, fields
+        try:
+            provider = request.match_info.get('provider')
+            if request.method == 'DELETE':
+                result = await self.ecosystem.disconnect(provider)
+            elif request.method == 'GET':
+                if request.path == '/api/ecosystem':
+                    result = self.ecosystem.state()
+                elif request.path.endswith('/inventory'):
+                    result = await self.ecosystem.inventory(provider)
+                else:
+                    if set(request.query) - {'offset', 'limit', 'q'}:
+                        raise ValueError('پارامتر جست‌وجو معتبر نیست.')
+                    result = await self.ecosystem.users(provider, offset=int(request.query.get('offset', '0')),
+                                                       limit=int(request.query.get('limit', '50')), query=request.query.get('q', ''))
+            else:
+                body = await request.json()
+                if request.path.endswith('/connections'):
+                    result = await self.ecosystem.connect(body)
+                elif request.path.endswith('/inbounds'):
+                    result = await self.ecosystem.inbound(provider, body)
+                elif request.path.endswith('/subscription'):
+                    fields(body, ('key','public_host','public_port'), ('key',))
+                    result = await self.ecosystem.subscription(provider, body['key'], body.get('public_host'), body.get('public_port'))
+                else:
+                    result = await self.ecosystem.mutate(provider, body)
+            return web.json_response(result)
+        except ProviderError as error:
+            return web.json_response({'error': str(error)}, status=502)
+        except ValueError as error:
+            return web.json_response({'error': str(error)}, status=400)
+        except (KeyError, TypeError, AttributeError, OverflowError):
+            return web.json_response({'error': 'ساختار پاسخ مقصد با آداپتر انتخابی سازگار نیست؛ نسخه و نوع اتصال را بررسی کن.'}, status=502)
+        except OSError:
+            return web.json_response({'error': 'ذخیره‌سازی خصوصی اتصال در دسترس نیست.'}, status=503)
 
     async def settings(self, request):
         if self.gateway.config['role'] != 'iran':

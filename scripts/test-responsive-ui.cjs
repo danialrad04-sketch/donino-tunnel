@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{
    res.writeHead(200,{'Content-Type':'text/html','Set-Cookie':'fixture_role='+ (url.searchParams.get('role')==='foreign'?'foreign':'iran')+'; Path=/; SameSite=Strict'});
    return res.end(fs.readFileSync(path.join(root,'donino_link/web/index.html')));
   }
-  if(['/app.js','/workspace.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){
+  if(['/app.js','/workspace.js','/ecosystem.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){
    res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'font/woff2');return res.end(fs.readFileSync(path.join(root,'donino_link/web',url.pathname.slice(1))));
   }
   let raw='';for await(const chunk of req)raw+=chunk;const body=raw?JSON.parse(raw):null;

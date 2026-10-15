@@ -77,6 +77,7 @@ jobs:
       - run: node scripts/test-ui.cjs
       - run: node scripts/test-responsive-ui.cjs
       - run: DONINO_CHROMIUM=/usr/bin/google-chrome node scripts/test-workspace-ui.cjs
+      - run: DONINO_CHROMIUM=/usr/bin/google-chrome python scripts/test-ecosystem-ui.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -131,3 +132,38 @@ jobs:
             provision-iran.log
             provision-foreign.log
             ui-role-results/
+
+  ecosystem-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install .
+      - run: python scripts/test-ecosystem.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ecosystem-integration-results
+          path: ecosystem-results.json
+  vpn-backend-systemd:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ['ubuntu-22.04', 'ubuntu-24.04']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install .
+      - run: sudo "$(command -v python)" scripts/test-vpn-backend.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vpn-backend-systemd-${{ matrix.runner }}
+          path: vpn-backend-results.json

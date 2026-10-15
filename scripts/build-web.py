@@ -4,7 +4,7 @@ import gzip
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / 'donino_link' / 'web'
-ASSETS = ('index.html', 'app.js', 'workspace.js', 'style.css')
+ASSETS = ('index.html', 'app.js', 'workspace.js', 'ecosystem.js', 'style.css')
 
 
 def build(check=False):

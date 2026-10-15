@@ -668,6 +668,12 @@ def application(worker):
     app.add_routes([web.post('/connection',connection),web.post('/remote-action',remote_action),web.post('/imported-action',imported_action),web.get('/state', state), web.post('/profiles', profiles), web.post('/pair',pair),web.post('/preview', preview), web.post('/start', start),web.post('/paqet-action',paqet_action)])
     async def cleanup(app):
         if worker.task: await worker.task
+    from .vpn_backend import Backend
+    backend = Backend()
+    async def vpn_backend(request):
+        result = await asyncio.to_thread(backend.status) if request.method == 'GET' else await asyncio.to_thread(backend.install, await request.json())
+        return web.json_response(result)
+    app.add_routes([web.get('/vpn-backend', vpn_backend), web.post('/vpn-backend', vpn_backend)])
     app.on_cleanup.append(cleanup)
     return app
 

@@ -27,7 +27,7 @@ const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture'),role=req.headers.cookie?.includes('fixture_role=foreign')?'foreign':'iran',managed=req.headers.cookie?.includes('fixture_managed=1');
   const json=(body,code=200)=>{res.writeHead(code,{'Content-Type':'application/json'});res.end(JSON.stringify(body));};
   if(url.pathname==='/'){res.writeHead(200,{'Content-Type':'text/html','Set-Cookie':['fixture_role='+ (url.searchParams.get('role')==='foreign'?'foreign':'iran')+'; Path=/','fixture_managed='+(url.searchParams.get('managed')==='1'?'1':'0')+'; Path=/']});return res.end(fs.readFileSync(path.join(root,'donino_link/web/index.html')));}
-  if(['/app.js','/workspace.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'font/woff2');return res.end(fs.readFileSync(path.join(root,'donino_link/web',url.pathname.slice(1))));}
+  if(['/app.js','/workspace.js','/ecosystem.js','/style.css','/Vazirmatn.woff2'].includes(url.pathname)){res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':url.pathname.endsWith('.css')?'text/css':'font/woff2');return res.end(fs.readFileSync(path.join(root,'donino_link/web',url.pathname.slice(1))));}
   let raw='';for await(const chunk of req)raw+=chunk;const body=raw?JSON.parse(raw):null;
   if(url.pathname==='/api/session'||url.pathname==='/api/login')return json({csrf:'workspace-fixture'});
   if(url.pathname==='/api/status')return json(status(role,managed));

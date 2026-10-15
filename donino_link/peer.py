@@ -441,6 +441,12 @@ def application(agent, network=False):
             return web.json_response(await asyncio.to_thread(agent.revoke,body['id']))
         async def action(request):return web.json_response(await agent.action(await request.json()),status=202)
         async def imported_action(request):return web.json_response(await agent.imported_action(await request.json()))
+        from .vpn_backend import Backend
+        backend = Backend()
+        async def vpn_backend(request):
+            result = await asyncio.to_thread(backend.status) if request.method == 'GET' else await asyncio.to_thread(backend.install, await request.json())
+            return web.json_response(result)
+        app.add_routes([web.get('/vpn-backend', vpn_backend), web.post('/vpn-backend', vpn_backend)])
         app.add_routes([web.post('/imported-action',imported_action),web.get('/state',state),web.post('/code',code),web.post('/revoke',revoke),web.post('/action',action)])
     return app
 
